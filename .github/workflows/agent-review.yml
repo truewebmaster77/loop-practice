@@ -107,3 +107,35 @@ jobs:
             --max-turns 25
             --permission-mode dontAsk
             --allowedTools "Read,Glob,Grep,Bash(git diff *),Bash(git show *),Bash(git log *),Bash(git status *),Bash(git checkout *),Bash(git stash *),Bash(git rev-parse *),Bash(npm run *),Bash(npm test *),Bash(npx vitest *),Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr comment *),Bash(gh issue view *)"
+
+      # The labels are what a human scans, so they must never lie. This runs as
+      # a plain shell step rather than being left to the reviewer, because the
+      # state of the pull request is a fact to be read off, not a judgment.
+      # `ready-for-human-merge` requires BOTH an approval and green checks —
+      # deterministic tests and model judgment are separate gates and both have
+      # to pass.
+      - name: Set the pull request's state label
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          VERDICT=$(gh pr view "$PR" --json comments \
+            --jq '[.comments[] | select(.body | contains("VERDICT:"))] | last | .body // ""' \
+            | grep -oE 'VERDICT: (APPROVED|CHANGES_REQUESTED)' | tail -1 || true)
+
+          FAILED=$(gh pr view "$PR" --json statusCheckRollup \
+            --jq '[.statusCheckRollup[]? | select(.conclusion != null and .conclusion != "SUCCESS" and .conclusion != "NEUTRAL" and .conclusion != "SKIPPED")] | length')
+
+          echo "verdict='$VERDICT'  non-passing checks=$FAILED"
+
+          if [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$FAILED" -eq 0 ]; then
+            gh pr edit "$PR" --add-label "ready-for-human-merge" --remove-label "changes-requested" || true
+            echo "Labelled ready-for-human-merge. Nothing here can merge it; that is a human's job."
+          elif [ "$VERDICT" = "VERDICT: CHANGES_REQUESTED" ]; then
+            gh pr edit "$PR" --add-label "changes-requested" --remove-label "ready-for-human-merge" || true
+            echo "Labelled changes-requested."
+          else
+            echo "No usable verdict, or checks are not green. Leaving labels alone."
+          fi
