@@ -1,0 +1,117 @@
+name: Triage draft
+
+# Fires when an issue is labelled `needs-triage`. Does the expensive part of
+# triage — reproducing the problem against the real code — and drafts an agent
+# brief for a human to check.
+#
+# IT DOES NOT AUTHORISE ANYTHING. It never applies `ready-for-agent`. That
+# label is the loop's only gate, and the gate is not the label, it is a human
+# deciding. A machine that both writes the brief and opens the gate has removed
+# the checkpoint while leaving something that looks like one.
+#
+# The design comes from watching triage work by hand: reproducing the bug beat
+# interrogating the reporter every time. "Some articles won't export" became
+# four specific broken cases without asking the reporter anything. That is the
+# part worth doing before a human ever looks.
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: triage-draft-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    if: github.event.label.name == 'needs-triage'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read      # cannot push, cannot branch, cannot open a pull request
+      issues: write       # comments only; label changes are excluded below
+      id-token: write
+    steps:
+      - name: Check the subscription token is present
+        env:
+          TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::CLAUDE_CODE_OAUTH_TOKEN is not set."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Issue #${{ github.event.issue.number }} has just been reported. Your job is to
+            do the legwork a human would otherwise do by hand, and then stop.
+
+            Read it:
+              gh issue view ${{ github.event.issue.number }} --comments
+
+            FIRST, TRY TO REPRODUCE IT. This matters more than anything else you
+            do here. Read the relevant code, then write a throwaway test or script
+            and actually run it to see the wrong behaviour with your own eyes.
+            Delete the throwaway afterwards — you must not leave changes behind.
+
+            A reproduced bug needs no follow-up questions. A vague report often
+            becomes precise the moment you run the code: "some articles won't
+            export" can turn into four named broken inputs without asking the
+            reporter anything at all.
+
+            THEN POST ONE COMMENT containing, in this order:
+
+            1. **Reproduced / Not reproduced / Partly reproduced** — say which,
+               and show the evidence: the exact inputs you tried and the exact
+               wrong output you got. If the behaviour is correct, say so plainly;
+               the report may be a misunderstanding.
+
+            2. **Already implemented?** — search the codebase for the requested
+               behaviour by what it does, not by the words the reporter used. Say
+               where you looked. If it exists, say where.
+
+            3. **A draft agent brief**, if and only if you reproduced it, using
+               exactly this structure:
+
+               ## Draft Agent Brief
+               **Category:** bug / enhancement
+               **Summary:** one line
+               **Current behavior:** what happens now, with the evidence above
+               **Desired behavior:** what should happen, including edge cases
+               **Acceptance criteria:** a checklist, each item independently
+                 verifiable — a specific input and its expected output. Include
+                 one criterion requiring a test that fails against today's code.
+               **Out of scope:** what must NOT be changed, named explicitly
+
+            4. **If you could not reproduce it**, do not write a brief. Instead
+               list the specific, answerable questions that would let you — not
+               "please clarify", but "what did you type in, and what appeared?"
+
+            5. **If it should be split**, say so. One ticket must mean one change.
+               Describe the separate tickets you would file.
+
+            Begin the comment with this line exactly:
+              > *Draft triage — reproduced automatically. A human decides whether this is ready.*
+
+            And end it with this line exactly:
+              _Not authorised. Apply `ready-for-agent` yourself if this brief is right._
+
+            HARD LIMITS. You may not add or remove any label. You may not close
+            the issue. You may not create a branch, a commit or a pull request.
+            You may not edit any file in the repository. You are drafting for a
+            human to check, and the decision to start work is theirs.
+          claude_args: |
+            --max-turns 40
+            --permission-mode dontAsk
+            --allowedTools "Read,Glob,Grep,Write,Edit,Bash(git diff),Bash(git diff *),Bash(git show *),Bash(git log *),Bash(git status),Bash(git checkout *),Bash(npm run *),Bash(npm test),Bash(npm test *),Bash(npx vitest),Bash(npx vitest *),Bash(node *),Bash(cat *),Bash(ls),Bash(ls *),Bash(rm *),Bash(gh issue view *),Bash(gh issue comment *)"
