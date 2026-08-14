@@ -67,22 +67,27 @@ jobs:
           plugin_marketplaces: "https://github.com/mattpocock/skills.git"
           plugins: "mattpocock-skills@mattpocock"
           prompt: |
-            /mattpocock-skills:code-review origin/main
+            YOUR DELIVERABLE IS A FILE. Whatever else happens, this run is only
+            useful if `review-matt.md` exists in the repository root when you
+            finish. Write it before you consider yourself done. Do not post
+            anything yourself — a later step posts that file, so that failing to
+            produce one is loud rather than silent.
 
-            The fixed point is `origin/main`. The originating spec is the GitHub
-            issue referenced in the pull request body for PR #${{ inputs.pr }} — find it
-            with `gh pr view ${{ inputs.pr }}` and read its agent brief with
-            `gh issue view <number> --comments`.
+            The task: review pull request #${{ inputs.pr }}, which is checked out.
 
-            When the skill has produced its side-by-side report, write the whole
-            report to `review-matt.md` in the repository root. Do not post it
-            yourself and do not edit any source file — a later step posts the
-            file, so that a failure to produce one is loud rather than silent.
+            Run the skill `/mattpocock-skills:code-review` with `origin/main` as
+            the fixed point. The originating spec is the GitHub issue referenced
+            in the pull request body — find it with `gh pr view ${{ inputs.pr }}` and
+            read its agent brief with `gh issue view <number> --comments`.
 
-            End the file with exactly one line:
+            Then write the skill's complete side-by-side report — both the
+            Standards axis and the Spec axis — into `review-matt.md`, and end
+            that file with exactly one line:
               VERDICT: APPROVED
             or
               VERDICT: CHANGES_REQUESTED
+
+            Do not edit any source file. You are reviewing, not authoring.
           # Wide shell, bounded blast radius: `contents: read` means nothing it
           # writes can leave the runner. The narrow-allowlist experiment on the
           # triage job produced eight refusals and no output, and a review that
