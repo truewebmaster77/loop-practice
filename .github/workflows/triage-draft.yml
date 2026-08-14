@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read      # cannot push, cannot branch, cannot open a pull request
-      issues: write       # comments only; label changes are excluded below
+      issues: write       # needed to comment; labelling is denied below
       id-token: write
     steps:
       - name: Check the subscription token is present
@@ -54,11 +54,100 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Run exactly this one command and nothing else:
-              gh issue comment ${{ github.event.issue.number }} --body "Probe: tool use works in this workflow."
+            Issue #${{ github.event.issue.number }} has just been reported. Your job is to
+            do the legwork a human would otherwise do by hand, and then stop.
+
+            Read it:
+              gh issue view ${{ github.event.issue.number }} --comments
+
+            FIRST, TRY TO REPRODUCE IT. This matters more than anything else you
+            do here. Read the relevant code, then write a throwaway test or script
+            and actually run it to see the wrong behaviour with your own eyes.
+            Delete the throwaway afterwards — you must not leave changes behind.
+
+            A reproduced bug needs no follow-up questions. A vague report often
+            becomes precise the moment you run the code: "some articles won't
+            export" can turn into four named broken inputs without asking the
+            reporter anything at all.
+
+            THEN WRITE YOUR FINDINGS to the file `triage-draft.md` in the root of
+            the repository. Do not try to post it — a later step posts that file
+            for you. This is deliberate: posting is mechanical, and a mechanical
+            step either works or fails loudly, whereas a model that cannot post
+            tends to finish quietly as though it had.
+
+            The file must contain, in this order:
+
+            1. **Reproduced / Not reproduced / Partly reproduced** — say which,
+               and show the evidence: the exact inputs you tried and the exact
+               wrong output you got. If the behaviour is correct, say so plainly;
+               the report may be a misunderstanding.
+
+            2. **Already implemented?** — search the codebase for the requested
+               behaviour by what it does, not by the words the reporter used. Say
+               where you looked. If it exists, say where.
+
+            3. **A draft agent brief**, if and only if you reproduced it, using
+               exactly this structure:
+
+               ## Draft Agent Brief
+               **Category:** bug / enhancement
+               **Summary:** one line
+               **Current behavior:** what happens now, with the evidence above
+               **Desired behavior:** what should happen, including edge cases
+               **Acceptance criteria:** a checklist, each item independently
+                 verifiable — a specific input and its expected output. Include
+                 one criterion requiring a test that fails against today's code.
+               **Out of scope:** what must NOT be changed, named explicitly
+
+            4. **If you could not reproduce it**, do not write a brief. Instead
+               list the specific, answerable questions that would let you — not
+               "please clarify", but "what did you type in, and what appeared?"
+
+            5. **If it should be split**, say so. One ticket must mean one change.
+               Describe the separate tickets you would file.
+
+            Begin the file with this line exactly:
+              > *Draft triage — reproduced automatically. A human decides whether this is ready.*
+
+            And end it with this line exactly:
+              _Not authorised. Apply `ready-for-agent` yourself if this brief is right._
+
+            HARD LIMITS. You may not add or remove any label, and you may not
+            close the issue — both are denied outright below, so do not try.
+            You are drafting for a human to check, and the decision to start work
+            is theirs.
+          # Permissions here are shaped by what this job can already do, not by a
+          # wish list. `contents: read` means nothing it writes can leave the
+          # runner, so restricting its shell buys little and costs a lot: an
+          # earlier, much narrower allowlist produced eight denials, no output,
+          # and a green tick. Investigation work needs an unpredictable spread of
+          # ordinary commands, and guessing that spread in advance does not work.
+          #
+          # So the shell is open and the two things that would actually matter —
+          # changing labels and closing the issue — are denied by name. Denials
+          # beat allowances, and both spellings are listed because the matcher
+          # treats them differently.
+          settings: |
+            {
+              "permissions": {
+                "deny": [
+                  "Bash(gh issue edit:*)",
+                  "Bash(gh issue edit *)",
+                  "Bash(gh issue close:*)",
+                  "Bash(gh issue close *)",
+                  "Bash(gh pr create:*)",
+                  "Bash(gh pr create *)",
+                  "Bash(gh api:*)",
+                  "Bash(gh api *)",
+                  "Bash(git push:*)",
+                  "Bash(git push *)"
+                ]
+              }
+            }
           claude_args: |
-            --max-turns 5
-            --allowedTools "Bash(gh issue comment *)"
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Write,Edit,Bash"
 
       # Posting is mechanical, so a shell step does it. If the draft is missing
       # the job fails and says so, rather than ending green with nothing posted —
@@ -75,3 +164,14 @@ jobs:
           fi
           gh issue comment "$ISSUE" --body-file triage-draft.md
           echo "Posted $(wc -c < triage-draft.md) bytes to issue #$ISSUE."
+
+      - name: The draft must not smuggle in code changes
+        if: always()
+        run: |
+          DIRTY=$(git status --porcelain -- . ':(exclude)triage-draft.md')
+          if [ -n "$DIRTY" ]; then
+            echo "::error::Triage left changes behind in the working tree. It is meant to reproduce and report, not edit."
+            echo "$DIRTY"
+            exit 1
+          fi
+          echo "OK — nothing left behind except the draft."
