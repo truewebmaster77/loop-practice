@@ -20,7 +20,5 @@ gate — it must pass before any AI review of a change is worth doing.
 
 ## Coding standards
 
-- Every exported function has a doc comment stating what it guarantees. If the code and the
-  comment disagree, the comment is the specification and the code is the bug.
-- Every bug fix arrives with a test that fails before the fix and passes after it.
-- One change per pull request.
+See [AGENTS.md](AGENTS.md). That file is the single copy — reviewers check changes against it,
+and `CLAUDE.md` imports it so both coding agents read the same rules.
