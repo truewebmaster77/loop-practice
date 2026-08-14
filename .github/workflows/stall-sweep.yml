@@ -73,6 +73,11 @@ jobs:
                 | grep -oE 'VERDICT: [A-Z_]+' | tail -1)
               if [ "$LAST" = "VERDICT: CHANGES_REQUESTED" ]; then
                 REASON="the reviewer requested changes ${AGE}h ago and nothing has happened since — the repair step never ran"
+              elif [ "$LAST" = "VERDICT: APPROVED" ]; then
+                # Approved but unlabelled. The work is finished and nobody has
+                # been told: a human scanning labels sees nothing here. The
+                # labelling step is what failed, not the review.
+                REASON="it was approved ${AGE}h ago but never got the \`ready-for-human-merge\` label, so nothing signals that it is waiting for you"
               else
                 continue
               fi
