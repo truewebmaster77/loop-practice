@@ -70,7 +70,13 @@ jobs:
             export" can turn into four named broken inputs without asking the
             reporter anything at all.
 
-            THEN POST ONE COMMENT containing, in this order:
+            THEN WRITE YOUR FINDINGS to the file `triage-draft.md` in the root of
+            the repository. Do not try to post anything yourself — a later step
+            posts that file for you. This is deliberate: posting is mechanical,
+            and a mechanical step either works or fails loudly, whereas a model
+            that cannot post tends to finish quietly as though it had.
+
+            The file must contain, in this order:
 
             1. **Reproduced / Not reproduced / Partly reproduced** — say which,
                and show the evidence: the exact inputs you tried and the exact
@@ -101,7 +107,7 @@ jobs:
             5. **If it should be split**, say so. One ticket must mean one change.
                Describe the separate tickets you would file.
 
-            Begin the comment with this line exactly:
+            Begin the file with this line exactly:
               > *Draft triage — reproduced automatically. A human decides whether this is ready.*
 
             And end it with this line exactly:
@@ -109,9 +115,26 @@ jobs:
 
             HARD LIMITS. You may not add or remove any label. You may not close
             the issue. You may not create a branch, a commit or a pull request.
-            You may not edit any file in the repository. You are drafting for a
-            human to check, and the decision to start work is theirs.
+            Apart from `triage-draft.md` and any throwaway you delete again, you
+            may not leave changes behind. You are drafting for a human to check,
+            and the decision to start work is theirs.
           claude_args: |
             --max-turns 40
             --permission-mode dontAsk
-            --allowedTools "Read,Glob,Grep,Write,Edit,Bash(git diff),Bash(git diff *),Bash(git show *),Bash(git log *),Bash(git status),Bash(git checkout *),Bash(npm run *),Bash(npm test),Bash(npm test *),Bash(npx vitest),Bash(npx vitest *),Bash(node *),Bash(cat *),Bash(ls),Bash(ls *),Bash(rm *),Bash(gh issue view *),Bash(gh issue comment *)"
+            --allowedTools "Read,Glob,Grep,Write,Edit,Bash(git diff),Bash(git diff *),Bash(git show *),Bash(git log *),Bash(git status),Bash(git checkout *),Bash(npm run *),Bash(npm test),Bash(npm test *),Bash(npx vitest),Bash(npx vitest *),Bash(node *),Bash(cat *),Bash(ls),Bash(ls *),Bash(rm *),Bash(gh issue view *)"
+
+      # Posting is mechanical, so a shell step does it. If the draft is missing
+      # the job fails and says so, rather than ending green with nothing posted —
+      # which is exactly what happened the first time this ran.
+      - name: Post the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          if [ ! -s triage-draft.md ]; then
+            echo "::error::No triage-draft.md was produced, so there is nothing to post. The run did work but left no output — treat this as a failure, not a quiet success."
+            exit 1
+          fi
+          gh issue comment "$ISSUE" --body-file triage-draft.md
+          echo "Posted $(wc -c < triage-draft.md) bytes to issue #$ISSUE."
