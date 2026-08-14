@@ -91,14 +91,18 @@ jobs:
             Do NOT edit any file. Do NOT commit. Do NOT merge. You are a judge,
             not an author. If something is wrong, say precisely what and where.
 
-            Post your review as a comment on the pull request using:
-              gh pr comment ${{ github.event.pull_request.number }} --body "..."
+            WRITE YOUR REVIEW to the file `review.md` in the repository root. Do
+            not post it yourself — a later step posts that file for you.
+            Delivery is mechanical, and a mechanical step either works or fails
+            loudly, whereas a model asked to deliver its own work tends to finish
+            quietly having done everything except that. It has now happened three
+            times on this repository.
 
             You must actually RUN the test suite. Reasoning about what the code
             would do is not verification, and an approval based on a hand-trace
             is indistinguishable from a real one once it is posted.
 
-            End the comment with exactly two lines, each on its own line:
+            End the file with exactly two lines, each on its own line:
 
               TESTS_EXECUTED: yes
               VERDICT: APPROVED
@@ -134,10 +138,41 @@ jobs:
           # were enough to burn a whole turn budget and produce no verdict at
           # all. Fail-closed is right; failing closed silently is not, which is
           # why the turn budget is now generous enough to leave a margin.
+          # Wide shell, bounded blast radius. `contents: read` means nothing
+          # written here can leave the runner, so narrowing the shell buys
+          # little — and it cost a lot: an earlier narrow allowlist starved this
+          # reviewer of the commands it needed and it burned its whole turn
+          # budget on refusals. Reviewing a diff is exploratory work and the
+          # commands cannot be guessed in advance. What matters is denied by
+          # name instead.
+          settings: |
+            {
+              "permissions": {
+                "deny": [
+                  "Bash(git push:*)", "Bash(git push *)",
+                  "Bash(git commit:*)", "Bash(git commit *)",
+                  "Bash(gh pr merge:*)", "Bash(gh pr merge *)",
+                  "Bash(gh pr edit:*)", "Bash(gh pr edit *)",
+                  "Bash(gh pr close:*)", "Bash(gh pr close *)"
+                ]
+              }
+            }
           claude_args: |
             --max-turns 40
-            --permission-mode dontAsk
-            --allowedTools "Read,Glob,Grep,Bash(git diff),Bash(git diff *),Bash(git show *),Bash(git log),Bash(git log *),Bash(git status),Bash(git status *),Bash(git checkout *),Bash(git stash),Bash(git stash *),Bash(git rev-parse *),Bash(git fetch),Bash(git fetch *),Bash(npm run *),Bash(npm test),Bash(npm test *),Bash(npx vitest),Bash(npx vitest *),Bash(node *),Bash(cat *),Bash(ls),Bash(ls *),Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr comment *),Bash(gh issue view *)"
+            --allowedTools "Read,Glob,Grep,Write,Edit,Bash"
+
+      - name: Post the review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ ! -s review.md ]; then
+            echo "::error::The reviewer produced no review.md, so this pull request has no verdict and has not been reviewed. Treat this as a failure, not a quiet success."
+            exit 1
+          fi
+          gh pr comment "$PR" --body-file review.md
+          echo "Posted $(wc -c < review.md) bytes."
 
       # The labels are what a human scans, so they must never lie. This runs as
       # a plain shell step rather than being left to the reviewer, because the
