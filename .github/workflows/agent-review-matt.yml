@@ -1,0 +1,122 @@
+name: Agent review (Matt)
+
+# A bake-off against agent-review.yml, not a replacement for it.
+#
+# Matt Pocock's code-review skill splits the job in two — Standards and Spec —
+# and runs them as parallel sub-agents so neither contaminates the other. Ours
+# asks one reviewer both questions. His also carries a fixed baseline of code
+# smells on top of whatever the repo documents, which ours has nothing like.
+#
+# Run this by hand on a pull request that our reviewer has already judged, then
+# compare the two comments.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number to review"
+        required: true
+
+concurrency:
+  group: agent-review-matt-${{ inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Check the subscription token is present
+        env:
+          TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::CLAUDE_CODE_OAUTH_TOKEN is not set."
+            exit 1
+          fi
+
+      - name: Find the pull request's branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          REF=$(gh pr view "${{ inputs.pr }}" --json headRefName --jq .headRefName)
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "Reviewing PR #${{ inputs.pr }} on branch $REF"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.pr.outputs.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "claude"
+          plugin_marketplaces: "https://github.com/mattpocock/skills.git"
+          plugins: "mattpocock-skills@mattpocock"
+          prompt: |
+            /mattpocock-skills:code-review origin/main
+
+            The fixed point is `origin/main`. The originating spec is the GitHub
+            issue referenced in the pull request body for PR #${{ inputs.pr }} — find it
+            with `gh pr view ${{ inputs.pr }}` and read its agent brief with
+            `gh issue view <number> --comments`.
+
+            When the skill has produced its side-by-side report, write the whole
+            report to `review-matt.md` in the repository root. Do not post it
+            yourself and do not edit any source file — a later step posts the
+            file, so that a failure to produce one is loud rather than silent.
+
+            End the file with exactly one line:
+              VERDICT: APPROVED
+            or
+              VERDICT: CHANGES_REQUESTED
+          # Wide shell, bounded blast radius: `contents: read` means nothing it
+          # writes can leave the runner. The narrow-allowlist experiment on the
+          # triage job produced eight refusals and no output, and a review that
+          # explores a diff is equally unpredictable.
+          settings: |
+            {
+              "permissions": {
+                "deny": [
+                  "Bash(git push:*)", "Bash(git push *)",
+                  "Bash(gh pr merge:*)", "Bash(gh pr merge *)",
+                  "Bash(gh pr edit:*)", "Bash(gh pr edit *)",
+                  "Bash(gh pr close:*)", "Bash(gh pr close *)"
+                ]
+              }
+            }
+          claude_args: |
+            --max-turns 50
+            --allowedTools "Read,Glob,Grep,Write,Edit,Bash,Agent"
+
+      - name: Post the review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ ! -s review-matt.md ]; then
+            echo "::error::No review-matt.md was produced. Treat as a failure, not a quiet success."
+            exit 1
+          fi
+          {
+            echo "## Second opinion — Matt Pocock's two-axis code review"
+            echo
+            echo "_Posted by the bake-off workflow, not by the loop. Compare with the reviewer's own verdict above._"
+            echo
+            cat review-matt.md
+          } > posted.md
+          gh pr comment "${{ inputs.pr }}" --body-file posted.md
+          echo "Posted $(wc -c < posted.md) bytes."
