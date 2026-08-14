@@ -3,10 +3,12 @@
  */
 
 /**
- * Count the words in a piece of prose.
+ * Count the words in a piece of prose. Text containing no words counts as 0.
  */
 export function wordCount(text: string): number {
-  return text.trim().split(/\s+/).length;
+  const trimmed = text.trim();
+  if (trimmed === "") return 0;
+  return trimmed.split(/\s+/).length;
 }
 
 /**
