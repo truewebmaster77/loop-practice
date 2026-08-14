@@ -28,10 +28,47 @@ export function truncate(text: string, maxLength: number): string {
   return text.slice(0, maxLength) + "…";
 }
 
+const RESERVED_WINDOWS_NAMES = new Set([
+  "CON",
+  "PRN",
+  "AUX",
+  "NUL",
+  "COM1",
+  "COM2",
+  "COM3",
+  "COM4",
+  "COM5",
+  "COM6",
+  "COM7",
+  "COM8",
+  "COM9",
+  "LPT1",
+  "LPT2",
+  "LPT3",
+  "LPT4",
+  "LPT5",
+  "LPT6",
+  "LPT7",
+  "LPT8",
+  "LPT9",
+]);
+
 /**
  * Turn a document title into a filename that is safe to write on Windows.
+ *
+ * The result never contains the characters Windows forbids in a filename,
+ * never has a base name ending in a dot or a space, never collides with a
+ * reserved device name (case-insensitively, regardless of extension), and
+ * is never a bare extension. Titles that are already valid come back
+ * unchanged apart from the appended extension.
  */
 export function safeFilename(title: string, extension: string): string {
-  const cleaned = title.replace(/[<>:"/\\|?*]/g, "");
+  let cleaned = title.replace(/[<>:"/\\|?*]/g, "");
+  cleaned = cleaned.replace(/[. ]+$/, "");
+  if (cleaned.length === 0) {
+    cleaned = "untitled";
+  } else if (RESERVED_WINDOWS_NAMES.has(cleaned.toUpperCase())) {
+    cleaned = `_${cleaned}`;
+  }
   return `${cleaned}.${extension}`;
 }

@@ -55,8 +55,21 @@ describe("safeFilename", () => {
   it("keeps ordinary punctuation", () => {
     expect(safeFilename("Notes - week 32 (final)", "md")).toBe("Notes - week 32 (final).md");
   });
-});
 
-  it("builds a filename from a title and an extension", () => {
-    expect(safeFilename("report", "docx")).toBe("report.docx");
+  it("does not let the base name end in a dot", () => {
+    expect(safeFilename("Q3 Results.", "docx")).toBe("Q3 Results.docx");
   });
+
+  it("does not let the base name end in a space", () => {
+    expect(safeFilename("draft ", "docx")).toBe("draft.docx");
+  });
+
+  it("does not let a reserved device name survive as the bare name", () => {
+    expect(safeFilename("CON", "docx")).toBe("_CON.docx");
+    expect(safeFilename("con", "docx")).toBe("_con.docx");
+  });
+
+  it("falls back to a usable name when everything is stripped", () => {
+    expect(safeFilename("???", "docx")).toBe("untitled.docx");
+  });
+});
