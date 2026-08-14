@@ -13,6 +13,16 @@ describe("wordCount", () => {
   it("ignores leading and trailing whitespace", () => {
     expect(wordCount("  hello world  ")).toBe(2);
   });
+
+  it("counts text containing no words as zero", () => {
+    expect(wordCount("")).toBe(0);
+    expect(wordCount("   ")).toBe(0);
+    expect(wordCount("\n\t ")).toBe(0);
+  });
+
+  it("counts a single word as one", () => {
+    expect(wordCount("hello")).toBe(1);
+  });
 });
 
 describe("slugify", () => {
