@@ -1,0 +1,92 @@
+name: Agent review
+
+# Fires when a pull request appears or changes. Deterministic checks run first
+# in ci.yml; this is the judgment gate that runs alongside them.
+#
+# The reviewer is a fresh run with no access to the implementer's reasoning.
+# It sees only the ticket, the diff, and the test results — which is the
+# property that stops a model agreeing with itself. It is forbidden from
+# editing code: a reviewer that fixes things is a second author, and then
+# nobody is checking the work.
+#
+# NOTE ON VENDOR: this reviews with Claude, in a separate run. The official
+# OpenAI Codex action requires a paid API key and has no ChatGPT-subscription
+# path, so cross-vendor review is not available on a subscription-only budget.
+# If that changes, or if you accept API billing, swap this job for
+# openai/codex-action@v1 — the surrounding contract does not change.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: agent-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Check the subscription token is present
+        env:
+          TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::CLAUDE_CODE_OAUTH_TOKEN is not set. Generate one with 'claude setup-token' and add it as a repository secret."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are an independent reviewer. You did not write this code and you
+            have not seen the author's reasoning. Judge the change on its own.
+
+            Read the pull request and the issue it closes:
+              gh pr view ${{ github.event.pull_request.number }}
+              gh pr diff ${{ github.event.pull_request.number }}
+
+            Find the linked issue number in the pull request body and read its
+            agent brief:
+              gh issue view <number> --comments
+
+            Then answer only these questions:
+
+            1. Does the diff satisfy every acceptance criterion in the brief?
+               Check each one individually and say so.
+            2. Does the new test actually fail against the old code? Verify it
+               rather than trusting the description — revert the source change,
+               run the test, confirm it fails, then restore.
+            3. Does the change obey the coding standards in AGENTS.md?
+            4. Did it touch anything the brief lists as out of scope?
+
+            Do NOT edit any file. Do NOT commit. Do NOT merge. You are a judge,
+            not an author. If something is wrong, say precisely what and where.
+
+            Post your review as a comment on the pull request using:
+              gh pr comment ${{ github.event.pull_request.number }} --body "..."
+
+            End the comment with exactly one line, on its own:
+              VERDICT: APPROVED
+            or
+              VERDICT: CHANGES_REQUESTED
+
+            When requesting changes, list each blocking finding with the file, the
+            acceptance criterion or standard it violates, and the smallest change
+            that would fix it. Mark anything non-blocking as a suggestion.
+          claude_args: |
+            --max-turns 25
+            --allowedTools "Bash,Read,Glob,Grep"

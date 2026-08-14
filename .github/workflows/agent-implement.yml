@@ -1,0 +1,74 @@
+name: Agent implement
+
+# Fires when a human applies the `ready-for-agent` label to an issue.
+# That label is the authorisation gate: nothing here runs without it.
+#
+# Claude reads the issue and its agent brief, implements the change on its own
+# branch, and opens a pull request linked to the issue. It cannot merge —
+# claude-code-action has no merge capability, so "a human is the merge
+# authority" is true by construction rather than by configuration.
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  # One run per issue, and never two runs racing on the same issue.
+  group: agent-implement-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    if: github.event.label.name == 'ready-for-agent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Check the subscription token is present
+        env:
+          TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::CLAUDE_CODE_OAUTH_TOKEN is not set. Generate one with 'claude setup-token' and add it as a repository secret."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Implement GitHub issue #${{ github.event.issue.number }} in this repository.
+
+            First read the issue and every comment on it:
+              gh issue view ${{ github.event.issue.number }} --comments
+
+            The comment headed "## Agent Brief" is the contract. Implement exactly
+            what it specifies — no more. Honour its "Out of scope" list literally:
+            if you notice an unrelated problem, mention it in the pull request body
+            and leave the code alone.
+
+            Follow the coding standards in AGENTS.md. In particular, every bug fix
+            needs a test that fails against the current code and passes after your
+            change. Write that test first and confirm it fails, so the test is
+            proven to catch the bug rather than merely assumed to.
+
+            Run `npm run check` and make sure it passes before you finish.
+
+            Then commit to a new branch named `agent/issue-${{ github.event.issue.number }}`
+            and open a pull request that says "Closes #${{ github.event.issue.number }}"
+            in its body. In the body, list each acceptance criterion from the brief
+            and state how you satisfied it.
+
+            Do not merge the pull request. Do not modify any file under .github/.
+          claude_args: |
+            --max-turns 30
+            --allowedTools "Bash,Read,Edit,Write,Glob,Grep"
