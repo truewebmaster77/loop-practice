@@ -94,9 +94,24 @@ jobs:
             Post your review as a comment on the pull request using:
               gh pr comment ${{ github.event.pull_request.number }} --body "..."
 
-            End the comment with exactly one line, on its own:
+            You must actually RUN the test suite. Reasoning about what the code
+            would do is not verification, and an approval based on a hand-trace
+            is indistinguishable from a real one once it is posted.
+
+            End the comment with exactly two lines, each on its own line:
+
+              TESTS_EXECUTED: yes
               VERDICT: APPROVED
-            or
+
+            `TESTS_EXECUTED` is `yes` only if you ran the suite yourself and saw
+            the results. If anything stopped you — a denied command, a missing
+            dependency, a broken environment — then it is `no`, and the verdict
+            MUST be CHANGES_REQUESTED with the obstacle named as the blocking
+            finding. Never approve work you could not check. Saying you were
+            unable to verify is a useful result; approving anyway is not.
+
+            The verdict line is one of:
+              VERDICT: APPROVED
               VERDICT: CHANGES_REQUESTED
 
             When requesting changes, list each blocking finding with the file, the
@@ -153,9 +168,21 @@ jobs:
                else ( max_by(.completedAt) | if .conclusion == "SUCCESS" then 0 else 1 end )
                end)')
 
-          echo "verdict='$VERDICT'  latest CI not green = $FAILED"
+          # An approval from a reviewer that could not run the tests is not an
+          # approval. This is enforced here rather than trusted to the prompt,
+          # because the failure it guards against — a hand-traced approval —
+          # reads exactly like a real one.
+          RAN=$(gh pr view "$PR" --json comments \
+            --jq '[.comments[] | select(.body | contains("VERDICT:"))] | last | .body // ""' \
+            | grep -oE 'TESTS_EXECUTED: (yes|no)' | tail -1 || true)
 
-          if [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$FAILED" -eq 0 ]; then
+          echo "verdict='$VERDICT'  tests_executed='$RAN'  latest CI not green = $FAILED"
+
+          if [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$RAN" != "TESTS_EXECUTED: yes" ]; then
+            gh pr comment "$PR" --body "Approval not accepted: the reviewer did not confirm it ran the test suite (\`$RAN\`). An approval that could not be checked is not a merge signal. Labelling this as needing changes." || true
+            gh pr edit "$PR" --add-label "changes-requested" --remove-label "ready-for-human-merge" || true
+            echo "Rejected an unverified approval."
+          elif [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$FAILED" -eq 0 ]; then
             gh pr edit "$PR" --add-label "ready-for-human-merge" --remove-label "changes-requested" || true
             echo "Labelled ready-for-human-merge. Nothing here can merge it; that is a human's job."
           elif [ "$VERDICT" = "VERDICT: CHANGES_REQUESTED" ]; then

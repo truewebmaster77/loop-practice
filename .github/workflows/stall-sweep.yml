@@ -1,0 +1,84 @@
+name: Stall sweep
+
+# The loop's worst failure is not a wrong answer. It is silence: a pull request
+# that stops moving and looks finished. That happened for real — a repair was
+# pushed with the wrong token, GitHub declined to trigger the review, and the
+# pull request sat with a green tick and no verdict, indistinguishable from
+# work awaiting a human.
+#
+# Nothing inside the loop can notice this, because the thing that failed is the
+# thing that would have reported it. So this runs on a timer, outside the loop,
+# and only ever adds a label and a comment.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Flag agent pull requests that have gone quiet
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          QUIET_HOURS: "2"
+        run: |
+          NOW=$(date -u +%s)
+          FOUND=0
+
+          # Only agent branches. A human's pull request sitting still is a human's
+          # business; an agent's pull request sitting still means the loop broke.
+          PRS=$(gh pr list --state open --limit 50 \
+            --json number,headRefName,updatedAt,labels \
+            --jq '.[] | select(.headRefName | startswith("agent/")) | @base64')
+
+          for row in $PRS; do
+            d() { echo "$row" | base64 -d | jq -r "$1"; }
+            NUM=$(d .number)
+            UPD=$(d .updatedAt)
+            LABELS=$(d '[.labels[].name] | join(",")')
+
+            # Already flagged, or already handed to a human? Leave it alone.
+            case "$LABELS" in
+              *escalated*|*ready-for-human-merge*) continue ;;
+            esac
+
+            AGE=$(( (NOW - $(date -u -d "$UPD" +%s)) / 3600 ))
+            [ "$AGE" -lt "$QUIET_HOURS" ] && continue
+
+            VERDICTS=$(gh pr view "$NUM" --json comments \
+              --jq '[.comments[] | select(.body | contains("VERDICT:"))] | length')
+
+            if [ "$VERDICTS" -eq 0 ]; then
+              REASON="it has been open ${AGE}h with no review verdict at all — the reviewer never ran, or ran and failed"
+            else
+              LAST=$(gh pr view "$NUM" --json comments \
+                --jq '[.comments[] | select(.body | contains("VERDICT:"))] | last | .body' \
+                | grep -oE 'VERDICT: [A-Z_]+' | tail -1)
+              if [ "$LAST" = "VERDICT: CHANGES_REQUESTED" ]; then
+                REASON="the reviewer requested changes ${AGE}h ago and nothing has happened since — the repair step never ran"
+              else
+                continue
+              fi
+            fi
+
+            echo "PR #$NUM is stalled: $REASON"
+            gh pr comment "$NUM" --body "## Stalled
+
+          This pull request is being flagged because $REASON.
+
+          Nothing is wrong with the code as far as this check knows. What is wrong is that the loop stopped moving, and a stalled pull request looks the same as a finished one. A human should look at the workflow runs for this branch.
+
+          _Posted by the scheduled stall sweep, which runs outside the loop precisely so that a broken loop cannot suppress it._" || true
+            gh pr edit "$NUM" --add-label "escalated" || true
+            FOUND=$((FOUND+1))
+          done
+
+          echo "Flagged $FOUND stalled pull request(s)."

@@ -1,0 +1,61 @@
+name: Guardrails
+
+# Deterministic guards against the two ways an agent can make a red suite go
+# green without fixing anything: delete the tests, or change the rules it is
+# being judged by. Neither needs judgment to detect, so neither is left to a
+# reviewer. These run alongside CI and are cheap.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  guardrails:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Tests must not be removed
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          git fetch -q origin "$BASE"
+
+          count_tests() {
+            git grep -hoE '(^|\s)(it|test)\(' "$1" -- '*.test.*' '*_test.*' 'test/*' 'tests/*' 2>/dev/null | wc -l
+          }
+
+          BEFORE=$(count_tests "origin/$BASE")
+          AFTER=$(count_tests HEAD)
+          echo "test cases on $BASE: $BEFORE"
+          echo "test cases on this branch: $AFTER"
+
+          if [ "$AFTER" -lt "$BEFORE" ]; then
+            echo "::error::This branch has fewer test cases than $BASE ($AFTER vs $BEFORE). Deleting tests is the easiest way to make a suite pass without fixing anything. If a test genuinely should go, say why in the pull request and a human can override this."
+            exit 1
+          fi
+          echo "OK — no tests were removed."
+
+      - name: An agent may not edit the rules it is judged by
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+            agent/*) ;;
+            *) echo "Not an agent branch ($HEAD_REF) — this guard does not apply."; exit 0 ;;
+          esac
+
+          CHANGED=$(git diff --name-only "origin/$BASE...HEAD" \
+            | grep -E '^(\.github/|AGENTS\.md|CLAUDE\.md|docs/agents/)' || true)
+
+          if [ -n "$CHANGED" ]; then
+            echo "::error::An agent branch changed the workflows or the coding standards it is reviewed against:"
+            echo "$CHANGED"
+            echo "::error::These files define the loop's own rules. Changing them from inside the loop removes the check. A human must make these edits."
+            exit 1
+          fi
+          echo "OK — the loop's own rules are untouched."
