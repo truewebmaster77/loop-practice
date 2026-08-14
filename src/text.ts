@@ -31,7 +31,11 @@ export function truncate(text: string, maxLength: number): string {
 /**
  * Turn a document title into a filename that is safe to write on Windows.
  */
+const WINDOWS_RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+
 export function safeFilename(title: string, extension: string): string {
-  const cleaned = title.replace(/[<>:"/\\|?*]/g, "");
+  let cleaned = title.replace(/[<>:"/\\|?*]/g, "").replace(/[. ]+$/, "");
+  if (cleaned === "") cleaned = "untitled";
+  if (WINDOWS_RESERVED.test(cleaned)) cleaned = `${cleaned}_`;
   return `${cleaned}.${extension}`;
 }
