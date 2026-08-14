@@ -13,10 +13,8 @@ export function wordCount(text: string): number {
  * Turn a title into a URL-safe slug.
  */
 export function slugify(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const words = title.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  return words.join("-");
 }
 
 /**
@@ -31,7 +29,11 @@ export function truncate(text: string, maxLength: number): string {
 /**
  * Turn a document title into a filename that is safe to write on Windows.
  */
+const WINDOWS_RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+
 export function safeFilename(title: string, extension: string): string {
-  const cleaned = title.replace(/[<>:"/\\|?*]/g, "");
+  let cleaned = title.replace(/[<>:"/\\|?*]/g, "").replace(/[. ]+$/, "");
+  if (cleaned === "") cleaned = "untitled";
+  if (WINDOWS_RESERVED.test(cleaned)) cleaned = `${cleaned}_`;
   return `${cleaned}.${extension}`;
 }

@@ -56,3 +56,9 @@ describe("safeFilename", () => {
     expect(safeFilename("Notes - week 32 (final)", "md")).toBe("Notes - week 32 (final).md");
   });
 });
+
+  it("produces a filename Windows will accept", () => {
+    expect(safeFilename("Q3 Results.", "docx")).toBe("Q3 Results.docx");
+    expect(safeFilename("CON", "docx")).toBe("CON_.docx");
+    expect(safeFilename("???", "docx")).toBe("untitled.docx");
+  });
