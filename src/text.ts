@@ -29,7 +29,8 @@ export function truncate(text: string, maxLength: number): string {
 }
 
 /**
- * Turn a document title into a filename that is safe to write on Windows.
+ * Turn a document title into a filename by removing the characters Windows
+ * forbids inside a name. Callers are responsible for anything else.
  */
 export function safeFilename(title: string, extension: string): string {
   const cleaned = title.replace(/[<>:"/\\|?*]/g, "");
