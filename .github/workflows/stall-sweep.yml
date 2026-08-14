@@ -14,6 +14,11 @@ on:
   schedule:
     - cron: "0 */6 * * *"
   workflow_dispatch:
+    inputs:
+      quiet_hours:
+        description: "How long a pull request must be quiet before it counts as stalled. Set to 0 to test that the detection actually fires."
+        required: false
+        default: "2"
 
 jobs:
   sweep:
@@ -28,16 +33,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          QUIET_HOURS: "2"
+          QUIET_HOURS: ${{ inputs.quiet_hours || '2' }}
         run: |
           NOW=$(date -u +%s)
           FOUND=0
 
           # Only agent branches. A human's pull request sitting still is a human's
           # business; an agent's pull request sitting still means the loop broke.
+          # Drafts are excluded deliberately. The review workflow skips drafts
+          # by design, so a draft has no verdict for an honest reason — sweeping
+          # them would flag "working as intended" as a fault, and a checker that
+          # cries wolf gets ignored, which is worse than not having one.
           PRS=$(gh pr list --state open --limit 50 \
-            --json number,headRefName,updatedAt,labels \
-            --jq '.[] | select(.headRefName | startswith("agent/")) | @base64')
+            --json number,headRefName,updatedAt,labels,isDraft \
+            --jq '.[] | select(.isDraft == false) | select(.headRefName | startswith("agent/")) | @base64')
 
           for row in $PRS; do
             d() { echo "$row" | base64 -d | jq -r "$1"; }
