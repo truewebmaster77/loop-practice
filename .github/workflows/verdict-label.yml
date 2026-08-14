@@ -1,0 +1,70 @@
+name: Verdict label
+
+# Sets a pull request's state label from whatever verdict was posted, wherever
+# it came from.
+#
+# This used to live inside the review workflow, which quietly assumed the
+# reviewer was the cloud one. Pulling it out is what makes the reviewer
+# genuinely swappable: a reviewer's whole contract is now "post a comment ending
+# in TESTS_EXECUTED and VERDICT". Claude in a cloud runner, Codex on a laptop, a
+# script, or a person typing the two lines by hand all satisfy it equally, and
+# this station cannot tell the difference.
+#
+# It is plain shell on purpose. The state of a pull request is a fact to be read
+# off, not a judgement, and a shell step either works or fails loudly.
+
+on:
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: verdict-label-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  label:
+    if: >-
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, 'VERDICT:')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Set the state label from the verdict
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          BODY=$(gh pr view "$PR" --json comments \
+            --jq '[.comments[] | select(.body | contains("VERDICT:"))] | last | .body // ""')
+
+          VERDICT=$(echo "$BODY" | grep -oE 'VERDICT: (APPROVED|CHANGES_REQUESTED)' | tail -1 || true)
+          RAN=$(echo "$BODY" | grep -oE 'TESTS_EXECUTED: (yes|no)' | tail -1 || true)
+
+          # Only the most recent completed run of the deterministic CI job counts.
+          # The rollup keeps every historical run, and the reviewer is itself a
+          # check — counting either would let old noise block the label forever.
+          CI_BAD=$(gh pr view "$PR" --json statusCheckRollup --jq '
+            [ .statusCheckRollup[]? | select(.name == "check" and .conclusion != null) ]
+            | (if length == 0 then 1
+               else ( max_by(.completedAt) | if .conclusion == "SUCCESS" then 0 else 1 end )
+               end)')
+
+          echo "verdict='$VERDICT'  tests_executed='$RAN'  latest CI not green = $CI_BAD"
+
+          if [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$RAN" != "TESTS_EXECUTED: yes" ]; then
+            gh pr comment "$PR" --body "Approval not accepted: the reviewer did not confirm it ran the test suite (\`$RAN\`). An approval that could not be checked is not a merge signal." || true
+            gh pr edit "$PR" --add-label "changes-requested" --remove-label "ready-for-human-merge" || true
+            echo "Rejected an unverified approval."
+          elif [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$CI_BAD" -eq 0 ]; then
+            gh pr edit "$PR" --add-label "ready-for-human-merge" --remove-label "changes-requested" || true
+            echo "Labelled ready-for-human-merge. Nothing here can merge it; that is a human's job."
+          elif [ "$VERDICT" = "VERDICT: CHANGES_REQUESTED" ]; then
+            gh pr edit "$PR" --add-label "changes-requested" --remove-label "ready-for-human-merge" || true
+            echo "Labelled changes-requested."
+          else
+            echo "No usable verdict, or CI is not green. Leaving labels alone."
+          fi

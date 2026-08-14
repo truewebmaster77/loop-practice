@@ -9,23 +9,31 @@ name: Agent review
 # editing code: a reviewer that fixes things is a second author, and then
 # nobody is checking the work.
 #
-# NOTE ON VENDOR: this reviews with Claude, in a separate run. The official
-# OpenAI Codex action requires a paid API key and has no ChatGPT-subscription
-# path, so cross-vendor review is not available on a subscription-only budget.
-# If that changes, or if you accept API billing, swap this job for
-# openai/codex-action@v1 — the surrounding contract does not change.
+# NOT THE ACTIVE REVIEWER ANY MORE. Codex reviews now, from the local machine,
+# because the official OpenAI action needs a paid API key while `codex exec`
+# runs on the ChatGPT subscription. See tools/local-review.ps1.
+#
+# This one is kept on manual dispatch so the two can be run against the same
+# diff whenever that is worth checking. Nothing else in the line had to change
+# when the reviewer moved off the cloud — the contract is "post a comment
+# ending in TESTS_EXECUTED and VERDICT", and both honour it.
 
+# Codex now reviews, from the local machine (see tools/local-review.ps1).
+# This workflow is kept on manual dispatch so the two can be compared on the
+# same diff whenever that is worth doing.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number to review"
+        required: true
 
 concurrency:
-  group: agent-review-${{ github.event.pull_request.number }}
+  group: agent-review-${{ inputs.pr }}
   cancel-in-progress: true
 
 jobs:
   review:
-    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -71,8 +79,8 @@ jobs:
             have not seen the author's reasoning. Judge the change on its own.
 
             Read the pull request and the issue it closes:
-              gh pr view ${{ github.event.pull_request.number }}
-              gh pr diff ${{ github.event.pull_request.number }}
+              gh pr view ${{ inputs.pr }}
+              gh pr diff ${{ inputs.pr }}
 
             Find the linked issue number in the pull request body and read its
             agent brief:
@@ -201,7 +209,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
+          PR: ${{ inputs.pr }}
         run: |
           if [ ! -s review.md ]; then
             echo "::error::The reviewer produced no review.md, so this pull request has no verdict and has not been reviewed. Treat this as a failure, not a quiet success."
@@ -209,56 +217,3 @@ jobs:
           fi
           gh pr comment "$PR" --body-file review.md
           echo "Posted $(wc -c < review.md) bytes."
-
-      # The labels are what a human scans, so they must never lie. This runs as
-      # a plain shell step rather than being left to the reviewer, because the
-      # state of the pull request is a fact to be read off, not a judgment.
-      # `ready-for-human-merge` requires BOTH an approval and green checks —
-      # deterministic tests and model judgment are separate gates and both have
-      # to pass.
-      - name: Set the pull request's state label
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          VERDICT=$(gh pr view "$PR" --json comments \
-            --jq '[.comments[] | select(.body | contains("VERDICT:"))] | last | .body // ""' \
-            | grep -oE 'VERDICT: (APPROVED|CHANGES_REQUESTED)' | tail -1 || true)
-
-          # Gate on the deterministic CI job only, named `check` in ci.yml, and
-          # only on its most recent completed run. Two traps here, both hit the
-          # hard way: the rollup keeps every historical run for the commit, so
-          # counting them all means one old failure blocks the label forever;
-          # and this review workflow is itself a check, so counting it would
-          # have the reviewer gating on its own past failures.
-          FAILED=$(gh pr view "$PR" --json statusCheckRollup --jq '
-            [ .statusCheckRollup[]? | select(.name == "check" and .conclusion != null) ]
-            | (if length == 0 then 1
-               else ( max_by(.completedAt) | if .conclusion == "SUCCESS" then 0 else 1 end )
-               end)')
-
-          # An approval from a reviewer that could not run the tests is not an
-          # approval. This is enforced here rather than trusted to the prompt,
-          # because the failure it guards against — a hand-traced approval —
-          # reads exactly like a real one.
-          RAN=$(gh pr view "$PR" --json comments \
-            --jq '[.comments[] | select(.body | contains("VERDICT:"))] | last | .body // ""' \
-            | grep -oE 'TESTS_EXECUTED: (yes|no)' | tail -1 || true)
-
-          echo "verdict='$VERDICT'  tests_executed='$RAN'  latest CI not green = $FAILED"
-
-          if [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$RAN" != "TESTS_EXECUTED: yes" ]; then
-            gh pr comment "$PR" --body "Approval not accepted: the reviewer did not confirm it ran the test suite (\`$RAN\`). An approval that could not be checked is not a merge signal. Labelling this as needing changes." || true
-            gh pr edit "$PR" --add-label "changes-requested" --remove-label "ready-for-human-merge" || true
-            echo "Rejected an unverified approval."
-          elif [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$FAILED" -eq 0 ]; then
-            gh pr edit "$PR" --add-label "ready-for-human-merge" --remove-label "changes-requested" || true
-            echo "Labelled ready-for-human-merge. Nothing here can merge it; that is a human's job."
-          elif [ "$VERDICT" = "VERDICT: CHANGES_REQUESTED" ]; then
-            gh pr edit "$PR" --add-label "changes-requested" --remove-label "ready-for-human-merge" || true
-            echo "Labelled changes-requested."
-          else
-            echo "No usable verdict, or checks are not green. Leaving labels alone."
-          fi
