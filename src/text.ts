@@ -30,6 +30,12 @@ export function truncate(text: string, maxLength: number): string {
 
 /**
  * Turn a document title into a filename that is safe to write on Windows.
+ * The base name (the part before the appended extension) never ends in a
+ * dot or a space, never collides with a reserved device name (`CON`, `PRN`,
+ * `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9`, case-insensitively) regardless
+ * of extension, and is never empty — a title that strips down to nothing
+ * falls back to `"untitled"`. Titles that are already valid come back
+ * unchanged apart from the appended extension.
  */
 export function safeFilename(title: string, extension: string): string {
   const RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
