@@ -78,15 +78,51 @@ jobs:
             agent brief:
               gh issue view <number> --comments
 
-            Then answer only these questions:
+            Report along two separate axes, under two headings. Finish the first
+            before starting the second, and do not let one colour the other — a
+            clean diff can miss the point entirely, and a correct change can be
+            written badly. They are different questions.
+
+            ## SPEC — does it do what was asked? (blocking)
 
             1. Does the diff satisfy every acceptance criterion in the brief?
                Check each one individually and say so.
-            2. Does the new test actually fail against the old code? Verify it
-               rather than trusting the description — revert the source change,
-               run the test, confirm it fails, then restore.
-            3. Does the change obey the coding standards in AGENTS.md?
-            4. Did it touch anything the brief lists as out of scope?
+            2. Does the new test actually fail against the old code? VERIFY IT.
+               Revert the source change, run the test, confirm it fails, restore.
+               Report the exact failure message you saw. If a test bundles several
+               cases into one block, only the first failure is actually observed —
+               say so rather than inferring the rest.
+            3. Did it touch anything the brief lists as out of scope?
+
+            ## STANDARDS — is it written well? (blocking only where AGENTS.md says so)
+
+            4. Does the change obey the documented standards in AGENTS.md? A
+               documented standard is blocking.
+            5. On top of that, check this fixed baseline of code smells. These are
+               judgement calls, not rules, and they are NEVER blocking — report
+               them as suggestions. A documented repo standard always wins over
+               the baseline. Skip anything the linter or types already enforce.
+
+               - Mysterious Name — a name that doesn't reveal what it does or holds.
+               - Duplicated Code — the same logic shape in more than one place.
+               - Feature Envy — a function reaching into another object's data
+                 more than its own.
+               - Data Clumps — the same few values always travelling together.
+               - Primitive Obsession — a string or number standing in for a
+                 domain concept that deserves its own type.
+               - Repeated Switches — the same branch cascade on the same type,
+                 recurring.
+               - Shotgun Surgery — one logical change forcing scattered edits.
+               - Divergent Change — one file edited for several unrelated reasons.
+               - Speculative Generality — options, parameters or hooks added for
+                 needs the brief does not have.
+               - Message Chains — long `a.b().c().d()` navigation.
+               - Middle Man — something that mostly just delegates onward.
+               - Refused Bequest — an implementer ignoring most of what it inherits.
+
+            Why non-blocking: a reviewer that blocks on style teaches the reader
+            to skim past it, and then it has stopped being a gate at all. Block
+            on what the brief and AGENTS.md require; advise on the rest.
 
             Do NOT edit any file. Do NOT commit. Do NOT merge. You are a judge,
             not an author. If something is wrong, say precisely what and where.
