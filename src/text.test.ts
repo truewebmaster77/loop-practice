@@ -56,3 +56,7 @@ describe("safeFilename", () => {
     expect(safeFilename("Notes - week 32 (final)", "md")).toBe("Notes - week 32 (final).md");
   });
 });
+
+  it("builds a filename from a title and an extension", () => {
+    expect(safeFilename("report", "docx")).toBe("report.docx");
+  });
