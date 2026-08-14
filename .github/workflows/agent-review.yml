@@ -51,6 +51,11 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The implementer opens its pull requests as the Claude app, and this
+          # action refuses bot-triggered runs by default so that agents cannot
+          # set each other off in a loop. A two-stage loop needs exactly one
+          # such handoff, so allow that one bot by name — never "*".
+          allowed_bots: "claude"
           prompt: |
             You are an independent reviewer. You did not write this code and you
             have not seen the author's reasoning. Judge the change on its own.
