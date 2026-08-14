@@ -41,6 +41,10 @@ describe("truncate", () => {
   it("adds an ellipsis when it shortens the text", () => {
     expect(truncate("hello world", 8)).toMatch(/…$/);
   });
+
+  it("never returns a string longer than maxLength", () => {
+    expect(truncate("x".repeat(200), 120).length).toBeLessThanOrEqual(120);
+  });
 });
 
 describe("safeFilename", () => {
