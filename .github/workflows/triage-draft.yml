@@ -120,6 +120,7 @@ jobs:
             and the decision to start work is theirs.
           claude_args: |
             --max-turns 40
+            --debug
             --permission-mode dontAsk
             --allowedTools "Read,Glob,Grep,Write,Edit,Bash(git diff),Bash(git diff *),Bash(git show *),Bash(git log *),Bash(git status),Bash(git checkout *),Bash(npm run *),Bash(npm test),Bash(npm test *),Bash(npx vitest),Bash(npx vitest *),Bash(node *),Bash(cat *),Bash(ls),Bash(ls *),Bash(rm *),Bash(gh issue view *)"
 
