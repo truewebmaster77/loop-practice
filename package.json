@@ -1,0 +1,16 @@
+{
+  "name": "loop-practice",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A deliberately small text-utilities library used as a practice target for the developer loop.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run test"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
