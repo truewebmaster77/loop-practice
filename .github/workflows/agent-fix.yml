@@ -1,0 +1,135 @@
+name: Agent fix
+
+# Fires when the reviewer posts a blocking verdict on a pull request.
+#
+# The rejected work goes back to the implementer on the SAME pull request, so
+# the pull request carries the whole conversation and stays reviewable as one
+# thing. Pushing to the same branch re-triggers the reviewer, which is what
+# closes the loop.
+#
+# The loop is bounded two ways. A hard cap of three implement-review rounds is
+# enforced below by counting verdicts — deterministic, not a matter of judgment.
+# On top of that, the implementer is told to escalate rather than try again when
+# it is being asked to fix something it already tried to fix, because a third
+# attempt at a misunderstood instruction is just the second one repeated.
+
+on:
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: agent-fix-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+env:
+  MAX_ROUNDS: 3
+
+jobs:
+  fix:
+    if: >-
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, 'VERDICT: CHANGES_REQUESTED')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Check the subscription token is present
+        env:
+          TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::CLAUDE_CODE_OAUTH_TOKEN is not set."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Enforce the round cap
+        id: cap
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          ROUNDS=$(gh pr view "$PR" --json comments \
+            --jq '[.comments[] | select(.body | contains("VERDICT: CHANGES_REQUESTED"))] | length')
+          echo "This pull request has been rejected $ROUNDS time(s); the cap is $MAX_ROUNDS."
+          echo "rounds=$ROUNDS" >> "$GITHUB_OUTPUT"
+
+          if [ "$ROUNDS" -ge "$MAX_ROUNDS" ]; then
+            echo "capped=true" >> "$GITHUB_OUTPUT"
+            gh pr comment "$PR" --body "$(cat <<EOF
+          ## Stopped — round cap reached
+
+          The reviewer has requested changes $ROUNDS times on this pull request, which is the
+          limit. Further attempts are stopped deliberately: when three rounds have not resolved
+          something, the problem is usually the ticket rather than the code, and more attempts
+          just cost more without converging.
+
+          This needs a human. The review comments above have the specifics.
+          EOF
+            )"
+            gh pr edit "$PR" --add-label "escalated" --remove-label "changes-requested" 2>/dev/null || true
+          else
+            echo "capped=false" >> "$GITHUB_OUTPUT"
+            gh pr edit "$PR" --add-label "changes-requested" 2>/dev/null || true
+          fi
+
+      - name: Check out the pull request branch
+        if: steps.cap.outputs.capped == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr checkout ${{ github.event.issue.number }}
+
+      - uses: anthropics/claude-code-action@v1
+        if: steps.cap.outputs.capped == 'false'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The reviewer that posts the verdict is the Claude app, and bot-triggered
+          # runs are refused by default so agents cannot set each other off. This is
+          # the second of the two handoffs this loop needs, so allow that one bot by
+          # name — never "*".
+          allowed_bots: "claude"
+          prompt: |
+            A reviewer has requested changes on pull request #${{ github.event.issue.number }},
+            which is checked out. This is round ${{ steps.cap.outputs.rounds }} of ${{ env.MAX_ROUNDS }}.
+
+            Read every review comment on the pull request, oldest first:
+              gh pr view ${{ github.event.issue.number }} --comments
+
+            BEFORE CHANGING ANYTHING, CHECK WHETHER YOU ARE REPEATING YOURSELF.
+            If a blocking finding in the latest review is one that an earlier review
+            already raised on this pull request, then the previous attempt to fix it
+            did not work, and trying the same thing again will not help. In that
+            case, do not edit the code. Instead post a comment explaining which
+            finding keeps recurring, what you tried, and why you think the two of you
+            are talking past each other, then run:
+              gh pr edit ${{ github.event.issue.number }} --add-label "escalated"
+            and stop.
+
+            Otherwise, fix every blocking finding in the latest review, and only
+            those. Suggestions marked non-blocking are not to be actioned.
+
+            Also read the originating issue's agent brief again — the fix must still
+            satisfy every acceptance criterion, and must still respect the brief's
+            out-of-scope list. Do not widen the change to make a finding easier to
+            address.
+
+            Follow the coding standards in AGENTS.md. Run `npm run check` and make
+            sure it passes.
+
+            Then commit to the SAME branch and push. Do not open a new pull request,
+            do not close this one, and do not merge. Pushing here re-runs the
+            reviewer, which is how this converges.
+
+            Finally, comment on the pull request listing each blocking finding and
+            what you changed to address it.
+          claude_args: |
+            --max-turns 30
+            --allowedTools "Bash,Read,Edit,Write,Glob,Grep"

@@ -46,10 +46,36 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Implement GitHub issue #${{ github.event.issue.number }} in this repository.
+            Consider implementing GitHub issue #${{ github.event.issue.number }} in this repository.
 
             First read the issue and every comment on it:
               gh issue view ${{ github.event.issue.number }} --comments
+
+            STOP AND ESCALATE, WITHOUT WRITING ANY CODE, IF ANY OF THESE IS TRUE.
+            Guessing is worse than stopping: a confident wrong change costs more
+            to undo than a question costs to answer.
+
+              (a) There is no comment headed "## Agent Brief".
+              (b) The brief has no acceptance criteria, or they are too vague to
+                  verify — you cannot tell, for a given input, whether you passed.
+              (c) The criteria contradict each other, or contradict the code's
+                  documented behaviour, and you would have to pick which one wins.
+              (d) Doing the work would need information the issue does not contain,
+                  such as which of several plausible behaviours is wanted.
+              (e) The work touches credentials, secrets, deployment, database
+                  migrations, billing, user data, or anything destructive.
+              (f) The change would clearly be larger than one self-contained
+                  change, and ought to be split into separate issues first.
+
+            To escalate: post a comment on the issue saying exactly which of the
+            above applies and what you would need in order to proceed — specific,
+            answerable questions, not "please clarify". Then run:
+              gh issue edit ${{ github.event.issue.number }} --add-label "needs-info" --remove-label "ready-for-agent"
+            Then stop. Do not create a branch and do not open a pull request.
+            Removing the label matters: it closes the authorisation gate, so the
+            work cannot restart until a human reopens it.
+
+            Otherwise, proceed.
 
             The comment headed "## Agent Brief" is the contract. Implement exactly
             what it specifies — no more. Honour its "Out of scope" list literally:

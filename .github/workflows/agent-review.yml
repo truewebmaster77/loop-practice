@@ -92,6 +92,18 @@ jobs:
             When requesting changes, list each blocking finding with the file, the
             acceptance criterion or standard it violates, and the smallest change
             that would fix it. Mark anything non-blocking as a suggestion.
+          # Two layers stop the reviewer becoming a second author.
+          #
+          # The job's `contents: read` permission means it cannot push anything,
+          # so even a stray write dies with the runner. That is the real
+          # protection. Below it is an allowlist: `dontAsk` denies everything not
+          # named here, and no file-editing tool is named. Bash is narrowed to
+          # the commands a reviewer genuinely needs — it must be able to revert
+          # the source and re-run the tests to check that a new test really
+          # catches the bug, so `git checkout`, `git show` and `npm` are in.
+          # `git push`, `git commit`, `gh pr merge` and `gh api` are simply
+          # absent, which denies them.
           claude_args: |
             --max-turns 25
-            --allowedTools "Bash,Read,Glob,Grep"
+            --permission-mode dontAsk
+            --allowedTools "Read,Glob,Grep,Bash(git diff *),Bash(git show *),Bash(git log *),Bash(git status *),Bash(git checkout *),Bash(git stash *),Bash(git rev-parse *),Bash(npm run *),Bash(npm test *),Bash(npx vitest *),Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr comment *),Bash(gh issue view *)"
