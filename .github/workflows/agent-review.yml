@@ -48,6 +48,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Install dependencies here rather than letting the reviewer do it. Two
+      # reasons: installing is the workflow's job, not a reviewer's, and it
+      # keeps `npm ci` out of the reviewer's allowlist — an install command can
+      # execute arbitrary lifecycle scripts from the branch under review, which
+      # is precisely the branch we do not trust yet.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -103,10 +113,16 @@ jobs:
           # catches the bug, so `git checkout`, `git show` and `npm` are in.
           # `git push`, `git commit`, `gh pr merge` and `gh api` are simply
           # absent, which denies them.
+          # Bare and prefixed forms are both listed, because a trailing " *"
+          # matches "npm test something" but not a bare "npm test". A denied
+          # command is not a hard stop — the reviewer retries, and eight denials
+          # were enough to burn a whole turn budget and produce no verdict at
+          # all. Fail-closed is right; failing closed silently is not, which is
+          # why the turn budget is now generous enough to leave a margin.
           claude_args: |
-            --max-turns 25
+            --max-turns 40
             --permission-mode dontAsk
-            --allowedTools "Read,Glob,Grep,Bash(git diff *),Bash(git show *),Bash(git log *),Bash(git status *),Bash(git checkout *),Bash(git stash *),Bash(git rev-parse *),Bash(npm run *),Bash(npm test *),Bash(npx vitest *),Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr comment *),Bash(gh issue view *)"
+            --allowedTools "Read,Glob,Grep,Bash(git diff),Bash(git diff *),Bash(git show *),Bash(git log),Bash(git log *),Bash(git status),Bash(git status *),Bash(git checkout *),Bash(git stash),Bash(git stash *),Bash(git rev-parse *),Bash(git fetch),Bash(git fetch *),Bash(npm run *),Bash(npm test),Bash(npm test *),Bash(npx vitest),Bash(npx vitest *),Bash(node *),Bash(cat *),Bash(ls),Bash(ls *),Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr comment *),Bash(gh issue view *)"
 
       # The labels are what a human scans, so they must never lie. This runs as
       # a plain shell step rather than being left to the reviewer, because the
