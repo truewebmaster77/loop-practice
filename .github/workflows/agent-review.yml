@@ -141,10 +141,19 @@ jobs:
             --jq '[.comments[] | select(.body | contains("VERDICT:"))] | last | .body // ""' \
             | grep -oE 'VERDICT: (APPROVED|CHANGES_REQUESTED)' | tail -1 || true)
 
-          FAILED=$(gh pr view "$PR" --json statusCheckRollup \
-            --jq '[.statusCheckRollup[]? | select(.conclusion != null and .conclusion != "SUCCESS" and .conclusion != "NEUTRAL" and .conclusion != "SKIPPED")] | length')
+          # Gate on the deterministic CI job only, named `check` in ci.yml, and
+          # only on its most recent completed run. Two traps here, both hit the
+          # hard way: the rollup keeps every historical run for the commit, so
+          # counting them all means one old failure blocks the label forever;
+          # and this review workflow is itself a check, so counting it would
+          # have the reviewer gating on its own past failures.
+          FAILED=$(gh pr view "$PR" --json statusCheckRollup --jq '
+            [ .statusCheckRollup[]? | select(.name == "check" and .conclusion != null) ]
+            | (if length == 0 then 1
+               else ( max_by(.completedAt) | if .conclusion == "SUCCESS" then 0 else 1 end )
+               end)')
 
-          echo "verdict='$VERDICT'  non-passing checks=$FAILED"
+          echo "verdict='$VERDICT'  latest CI not green = $FAILED"
 
           if [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$FAILED" -eq 0 ]; then
             gh pr edit "$PR" --add-label "ready-for-human-merge" --remove-label "changes-requested" || true
