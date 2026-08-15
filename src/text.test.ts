@@ -27,6 +27,19 @@ describe("slugify", () => {
   it("does not leave hyphens at either end", () => {
     expect(slugify("!!! Big News !!!")).toBe("big-news");
   });
+
+  it("converts accented Latin letters to their plain-ASCII equivalent", () => {
+    expect(slugify("Café Life in Paris")).toBe("cafe-life-in-paris");
+    expect(slugify("Naïve Travelers Guide")).toBe("naive-travelers-guide");
+  });
+
+  it("does not collapse a title of only accented letters to nothing", () => {
+    expect(slugify("Café")).toBe("cafe");
+  });
+
+  it("expands eszett to 'ss' instead of dropping it", () => {
+    expect(slugify("Straße Food Tour Berlin")).toContain("strasse");
+  });
 });
 
 describe("truncate", () => {

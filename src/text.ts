@@ -10,11 +10,16 @@ export function wordCount(text: string): number {
 }
 
 /**
- * Turn a title into a URL-safe slug.
+ * Turn a title into a URL-safe slug. Accented Latin letters (é, ü, ñ, ß, …)
+ * are converted to their closest plain-ASCII equivalent rather than being
+ * dropped, so no letter silently disappears from the result.
  */
 export function slugify(title: string): string {
   return title
     .toLowerCase()
+    .replace(/ß/g, "ss")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
