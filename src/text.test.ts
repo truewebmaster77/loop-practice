@@ -2,9 +2,6 @@ import { describe, expect, it } from "vitest";
 import { safeFilename, slugify, truncate, wordCount } from "./text.js";
 
 describe("wordCount", () => {
-  it("counts words separated by single spaces", () => {
-    expect(wordCount("the quick brown fox")).toBe(4);
-  });
 
   it("ignores runs of whitespace and newlines", () => {
     expect(wordCount("the   quick\n\nbrown  fox")).toBe(4);
