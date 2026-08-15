@@ -40,6 +40,14 @@ describe("slugify", () => {
   it("expands eszett to 'ss' instead of dropping it", () => {
     expect(slugify("Straße Food Tour Berlin")).toContain("strasse");
   });
+
+  it("transliterates Latin letters that NFD normalization does not decompose", () => {
+    expect(slugify("Smørrebrød")).toBe("smorrebrod");
+    expect(slugify("Łódź")).toBe("lodz");
+    expect(slugify("Œuvre")).toBe("oeuvre");
+    expect(slugify("Æsir")).toBe("aesir");
+    expect(slugify("Đakovo")).toBe("dakovo");
+  });
 });
 
 describe("truncate", () => {

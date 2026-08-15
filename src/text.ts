@@ -9,15 +9,26 @@ export function wordCount(text: string): number {
   return text.trim().split(/\s+/).length;
 }
 
+const NON_DECOMPOSING_LATIN_LETTERS: Record<string, string> = {
+  æ: "ae",
+  œ: "oe",
+  ø: "o",
+  ł: "l",
+  đ: "d",
+  ð: "d",
+  þ: "th",
+};
+
 /**
- * Turn a title into a URL-safe slug. Accented Latin letters (é, ü, ñ, ß, …)
- * are converted to their closest plain-ASCII equivalent rather than being
- * dropped, so no letter silently disappears from the result.
+ * Turn a title into a URL-safe slug. Accented Latin letters (é, ü, ñ, ß, œ,
+ * ø, …) are converted to their closest plain-ASCII equivalent rather than
+ * being dropped, so no letter silently disappears from the result.
  */
 export function slugify(title: string): string {
   return title
     .toLowerCase()
     .replace(/ß/g, "ss")
+    .replace(/[æœøłđðþ]/g, (letter) => NON_DECOMPOSING_LATIN_LETTERS[letter] ?? letter)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
