@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safeFilename, slugify, truncate, wordCount } from "./text.js";
+import { readingTime, safeFilename, slugify, truncate, wordCount } from "./text.js";
 
 describe("wordCount", () => {
   it("counts words separated by single spaces", () => {
@@ -71,5 +71,27 @@ describe("safeFilename", () => {
 
   it("falls back to a usable name when everything is stripped", () => {
     expect(safeFilename("???", "docx")).toBe("untitled.docx");
+  });
+});
+
+describe("readingTime", () => {
+  it("returns 0 for an empty string", () => {
+    expect(readingTime("")).toBe(0);
+  });
+
+  it("returns 0 for whitespace-only input", () => {
+    expect(readingTime("   ")).toBe(0);
+  });
+
+  it("returns 1 for exactly 200 words", () => {
+    expect(readingTime("word ".repeat(200).trim())).toBe(1);
+  });
+
+  it("rounds up to 2 for 201 words", () => {
+    expect(readingTime("word ".repeat(201).trim())).toBe(2);
+  });
+
+  it("rounds up to 1 for a single word", () => {
+    expect(readingTime("word")).toBe(1);
   });
 });

@@ -10,6 +10,16 @@ export function wordCount(text: string): number {
 }
 
 /**
+ * Estimate the whole minutes required to read `text`, at 200 words per
+ * minute, always rounding up. Empty or whitespace-only text takes `0`
+ * minutes; any other text takes at least `1`.
+ */
+export function readingTime(text: string): number {
+  if (text.trim() === "") return 0;
+  return Math.ceil(wordCount(text) / 200);
+}
+
+/**
  * Turn a title into a URL-safe slug.
  */
 export function slugify(title: string): string {
