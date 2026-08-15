@@ -59,6 +59,13 @@ stopped being a gate at all. Block on what the brief and `AGENTS.md` require; ad
 
 ## Rules
 
+Use only the tools already present in this checkout and the repository's own commands. Do not
+install anything, do not try to fetch an external review service, and do not reach for a
+third-party linter or review CLI. If something you would like is unavailable, say so in the review
+and carry on with what you have. Two runs of this reviewer hung for tens of minutes attempting to
+install an external tool through a proxy, produced nothing, and were killed by the timeout.
+
+
 Do not edit any file. Do not commit. Do not push. Do not merge. You are a judge, not an author — a
 reviewer that fixes things becomes a second author, and then nobody is checking the work.
 
@@ -70,6 +77,13 @@ and an approval based on a hand-trace is indistinguishable from a real one once 
 Write your review to `review.md` in the repository root. Do not try to post it — the runner posts
 that file. Delivery is mechanical, and a mechanical step either works or fails loudly, whereas an
 agent asked to deliver its own work tends to finish having done everything except that.
+
+Begin the file with a line naming the commit you reviewed, exactly:
+
+    Reviewed commit: <the short hash of HEAD>
+
+A verdict that does not say which code it judged is indistinguishable from a current one once a
+newer commit lands, and a stale verdict on top of a pull request reads exactly like a fresh one.
 
 End the file with exactly two lines, each on its own line:
 

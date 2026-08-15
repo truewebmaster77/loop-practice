@@ -179,7 +179,11 @@ try {
         continue
       }
 
-      $body = (Get-Content $reviewFile -Raw).TrimEnd()
+      # Read and write as UTF-8 explicitly. Windows PowerShell 5.1 defaults to
+      # the system codepage, which turns every accented character in a review
+      # into mojibake — and a review about accented characters then arrives
+      # unreadable, which is a special kind of unhelpful.
+      $body = ([System.IO.File]::ReadAllText($reviewFile, [System.Text.UTF8Encoding]::new($false))).TrimEnd()
       $body += "`n`n<!-- $Marker`: $($p.headRefOid) -->"
       $body  = "_Reviewed by Codex on the local machine._`n`n" + $body
 
@@ -188,7 +192,7 @@ try {
         Write-Host ($body.Substring(0, [Math]::Min(600, $body.Length)))
       } else {
         $tmp = Join-Path $env:TEMP "review-$($p.number).md"
-        Set-Content -Path $tmp -Value $body -Encoding utf8
+        [System.IO.File]::WriteAllText($tmp, $body, [System.Text.UTF8Encoding]::new($false))
         & gh pr comment $p.number --body-file $tmp --repo (& gh repo view --json nameWithOwner --jq .nameWithOwner)
         Remove-Item $tmp -ErrorAction SilentlyContinue
         Say "  posted verdict for PR #$($p.number)"

@@ -44,6 +44,21 @@ jobs:
           VERDICT=$(echo "$BODY" | grep -oE 'VERDICT: (APPROVED|CHANGES_REQUESTED)' | tail -1 || true)
           RAN=$(echo "$BODY" | grep -oE 'TESTS_EXECUTED: (yes|no)' | tail -1 || true)
 
+          # A verdict is only about the code it actually read. When a repair
+          # lands after a review, the old verdict stays at the top of the pull
+          # request and looks current — a stale verdict is indistinguishable
+          # from a fresh one at a glance. This caught out a human within an hour
+          # of the reviewer moving machines, so it is checked here rather than
+          # left to whoever is reading.
+          HEAD_SHA=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)
+          SEEN=$(echo "$BODY" | grep -oE 'reviewed-commit: [0-9a-f]{7,40}' | tail -1 | awk '{print $2}' || true)
+
+          if [ -n "$SEEN" ] && [ "${HEAD_SHA#$SEEN}" = "$HEAD_SHA" ]; then
+            echo "The newest verdict judged $SEEN but the head is now $HEAD_SHA. Stale — leaving labels alone."
+            gh pr edit "$PR" --remove-label "ready-for-human-merge" || true
+            exit 0
+          fi
+
           # Only the most recent completed run of the deterministic CI job counts.
           # The rollup keeps every historical run, and the reviewer is itself a
           # check — counting either would let old noise block the label forever.
