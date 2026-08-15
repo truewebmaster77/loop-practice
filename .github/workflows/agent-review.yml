@@ -146,6 +146,19 @@ jobs:
             would do is not verification, and an approval based on a hand-trace
             is indistinguishable from a real one once it is posted.
 
+            Begin the file with a line naming the commit you reviewed, exactly:
+
+              Reviewed commit: <the short hash of HEAD>
+
+            A verdict that does not say which code it judged looks current
+            forever, and a stale verdict sitting on top of a pull request reads
+            exactly like a fresh one.
+
+            Use only what is already in this checkout and the repository's own
+            commands. Do not install anything and do not reach for an external
+            review service — two runs of the local reviewer hung for tens of
+            minutes trying, produced nothing, and were killed by the timeout.
+
             End the file with exactly two lines, each on its own line:
 
               TESTS_EXECUTED: yes
