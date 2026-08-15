@@ -48,6 +48,14 @@ describe("slugify", () => {
     expect(slugify("Æsir")).toBe("aesir");
     expect(slugify("Đakovo")).toBe("dakovo");
   });
+
+  it("transliterates further non-decomposing Latin letters (stroke, dotless, ligature)", () => {
+    expect(slugify("Ħal Saflieni")).toBe("hal-saflieni");
+    expect(slugify("Diyarbakır")).toBe("diyarbakir");
+    expect(slugify("Ŧŧ")).toBe("tt");
+    expect(slugify("Ŋŋ")).toBe("nn");
+    expect(slugify("Ĳsselmeer")).toBe("ijsselmeer");
+  });
 });
 
 describe("truncate", () => {

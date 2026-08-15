@@ -9,6 +9,11 @@ export function wordCount(text: string): number {
   return text.trim().split(/\s+/).length;
 }
 
+// Latin letters that Unicode NFD normalization does not decompose into a
+// base letter plus a combining mark (ligatures and letters-with-stroke from
+// the Latin-1 Supplement and Latin Extended-A blocks), mapped to their
+// closest plain-ASCII equivalent. The matching regex below is derived from
+// this map's keys so the two cannot drift out of sync.
 const NON_DECOMPOSING_LATIN_LETTERS: Record<string, string> = {
   æ: "ae",
   œ: "oe",
@@ -17,7 +22,19 @@ const NON_DECOMPOSING_LATIN_LETTERS: Record<string, string> = {
   đ: "d",
   ð: "d",
   þ: "th",
+  ħ: "h",
+  ŧ: "t",
+  ŋ: "n",
+  ı: "i",
+  ĳ: "ij",
+  ŉ: "n",
+  ĸ: "k",
+  ŀ: "l",
 };
+const NON_DECOMPOSING_LATIN_LETTERS_PATTERN = new RegExp(
+  `[${Object.keys(NON_DECOMPOSING_LATIN_LETTERS).join("")}]`,
+  "g",
+);
 
 /**
  * Turn a title into a URL-safe slug. Accented Latin letters (é, ü, ñ, ß, œ,
@@ -28,7 +45,7 @@ export function slugify(title: string): string {
   return title
     .toLowerCase()
     .replace(/ß/g, "ss")
-    .replace(/[æœøłđðþ]/g, (letter) => NON_DECOMPOSING_LATIN_LETTERS[letter] ?? letter)
+    .replace(NON_DECOMPOSING_LATIN_LETTERS_PATTERN, (letter) => NON_DECOMPOSING_LATIN_LETTERS[letter] ?? letter)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
