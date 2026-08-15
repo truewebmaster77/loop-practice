@@ -46,6 +46,18 @@ requests carry two extra labels beyond the triage vocabulary:
 
 `main` is protected: the `check` status must pass and one approval is required.
 
+**How to merge, and why it needs `--admin`.** The loop's approval is a *comment* ending in
+`VERDICT: APPROVED`, not a GitHub pull request review. GitHub's "one approval required" rule only
+counts real reviews, so a `ready-for-human-merge` pull request still has zero approvals as far as
+the branch rule is concerned, and `gh pr merge` refuses it:
+
+    gh pr merge <n> --squash --delete-branch --admin
+
+That is deliberate. The alternative — having the reviewer submit a real GitHub approval — would let
+a machine satisfy the human-approval rule, which is the one thing the rule exists to prevent. So the
+owner overrides it by hand, and the override *is* the human decision. If this repository ever gains
+other maintainers, the right change is for a second human to approve, not for the machine to.
+
 ## Wayfinding operations
 
 Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
