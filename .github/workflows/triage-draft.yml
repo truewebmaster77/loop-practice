@@ -69,15 +69,59 @@ jobs:
             Read it:
               gh issue view ${{ github.event.issue.number }} --comments
 
-            FIRST, TRY TO REPRODUCE IT. This matters more than anything else you
-            do here. Read the relevant code, then write a throwaway test or script
-            and actually run it to see the wrong behaviour with your own eyes.
-            Delete the throwaway afterwards — you must not leave changes behind.
+            FIRST, WORK OUT WHICH KIND OF TICKET THIS IS. There are two, and
+            they need opposite treatment. Getting this wrong wastes the run:
+            trying to reproduce a feature that does not exist yet returns "not
+            reproduced", which is true, useless, and blocks the work.
+
+            **A REPORT** — someone says something is broken. It describes
+            behaviour that already exists and is wrong. It has no section headed
+            "Acceptance criteria".
+
+            **A SPECIFICATION** — a ticket cut from a plan or a product document,
+            describing behaviour that does not exist yet. It arrives with a
+            section headed "## Acceptance criteria", usually as a checklist.
+
+            ─────────────────────────────────────────────────────────
+            IF IT IS A REPORT: reproduce it.
+            ─────────────────────────────────────────────────────────
+
+            This matters more than anything else you do here. Read the relevant
+            code, then write a throwaway test or script and actually run it to
+            see the wrong behaviour with your own eyes. Delete the throwaway
+            afterwards — you must not leave changes behind.
 
             A reproduced bug needs no follow-up questions. A vague report often
             becomes precise the moment you run the code: "some articles won't
             export" can turn into four named broken inputs without asking the
             reporter anything at all.
+
+            ─────────────────────────────────────────────────────────
+            IF IT IS A SPECIFICATION: do not try to reproduce anything.
+            ─────────────────────────────────────────────────────────
+
+            The work has not been done, so there is nothing to run. Your job is
+            to find out whether this ticket can actually be built as written,
+            before a human authorises it. Check all four:
+
+              1. **Is it already done?** Search the code by what the behaviour
+                 does, not by the ticket's wording. Say where you looked. If it
+                 exists, say where and recommend closing.
+              2. **Is every acceptance criterion verifiable?** For each one, say
+                 whether you could write a test that passes or fails on it. A
+                 criterion nobody can check is the single most expensive thing
+                 to let through — name it and propose a checkable replacement.
+              3. **Does it conflict with what is already there?** Name the
+                 functions, files and behaviours it would change, and any
+                 existing test it would break. This is the part a human cannot
+                 easily do from the ticket alone, and it is where most of your
+                 value is.
+              4. **Is it one change?** If it is really several, say how you would
+                 split it and stop — one ticket, one change.
+
+            Then write the brief as normal, with the acceptance criteria
+            rewritten as specific inputs and expected outputs wherever the
+            original was vague.
 
             THEN WRITE YOUR FINDINGS to the file `triage-draft.md` in the root of
             the repository. Do not try to post it — a later step posts that file
@@ -87,10 +131,13 @@ jobs:
 
             The file must contain, in this order:
 
-            1. **Reproduced / Not reproduced / Partly reproduced** — say which,
-               and show the evidence: the exact inputs you tried and the exact
-               wrong output you got. If the behaviour is correct, say so plainly;
-               the report may be a misunderstanding.
+            1. **For a report:** Reproduced / Not reproduced / Partly reproduced
+               — say which, and show the evidence: the exact inputs you tried and
+               the exact wrong output you got. If the behaviour is correct, say
+               so plainly; the report may be a misunderstanding.
+               **For a specification:** say "Specification — nothing to reproduce"
+               and give the four checks above: already built, criteria
+               verifiable, conflicts with existing code, one change or several.
 
             2. **Already implemented?** — search the codebase for the requested
                behaviour by what it does, not by the words the reporter used. Say
