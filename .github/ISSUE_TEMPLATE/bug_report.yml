@@ -1,0 +1,74 @@
+name: Something is broken
+description: Report a bug. You do not need to diagnose it — just describe what happened.
+labels: ["needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. A few things worth knowing:
+
+        **You don't need to work out the cause.** Something will try to reproduce this
+        automatically and work out the cause for you. Your job is to describe what you saw.
+
+        **Rough is fine.** "Some of my links look wrong, letters seem to go missing" was
+        enough to find a real bug. Please don't polish it — just be concrete about what
+        you did and what appeared.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you see? Quote the exact text or numbers if you can.
+      placeholder: The word counter said 1 on an empty document.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-expected
+    attributes:
+      label: What did you expect instead?
+      description: One sentence is plenty.
+      placeholder: It should have said 0.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can someone else see it happen?
+      description: >
+        The single most useful thing you can give us. Numbered steps if you can manage
+        them, but "open a new document and look at the bottom" is fine too. If you have
+        an example that triggers it — a title, a filename, some text you pasted — put
+        the exact thing here rather than describing it.
+      placeholder: |
+        1. Open a new document
+        2. Don't type anything
+        3. Look at the word count at the bottom
+    validations:
+      required: true
+
+  - type: input
+    id: how-often
+    attributes:
+      label: Does it happen every time?
+      placeholder: Every time / only sometimes / only happened once
+    validations:
+      required: false
+
+  - type: input
+    id: environment
+    attributes:
+      label: Where were you?
+      description: Browser, operating system, app version — whatever you know.
+      placeholder: Chrome on Windows 11
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        Once you submit, this gets picked up automatically and someone — or something —
+        will try to reproduce it and write up what it found. Nothing changes in the code
+        until a human reads that and approves it.

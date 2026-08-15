@@ -16,15 +16,24 @@ name: Triage draft
 
 on:
   issues:
-    types: [labeled]
+    # `opened` as well as `labeled`, because the issue form applies
+    # `needs-triage` as the issue is created and GitHub does not reliably raise a
+    # separate label event for a label the template applied. Listening only for
+    # `labeled` meant a report filed through the form started nothing at all —
+    # which is the worst kind of failure here, since the reporter sees their
+    # issue appear and assumes it is being looked at.
+    types: [opened, labeled]
 
 concurrency:
   group: triage-draft-${{ github.event.issue.number }}
-  cancel-in-progress: false
+  # If both events do fire, the newer run wins rather than posting two drafts.
+  cancel-in-progress: true
 
 jobs:
   draft:
-    if: github.event.label.name == 'needs-triage'
+    if: >-
+      (github.event.action == 'labeled' && github.event.label.name == 'needs-triage') ||
+      (github.event.action == 'opened' && contains(join(github.event.issue.labels.*.name, ','), 'needs-triage'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

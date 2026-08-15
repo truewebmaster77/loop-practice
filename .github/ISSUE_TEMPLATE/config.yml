@@ -1,0 +1,4 @@
+# Force reports through the form. A blank issue arrives with no labels, and the
+# label is what starts the line — so a blank issue is a report that silently
+# never gets looked at.
+blank_issues_enabled: false
