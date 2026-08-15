@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Reviews open pull requests with Codex, on this machine, on the ChatGPT subscription.
 
@@ -26,12 +26,28 @@
 [CmdletBinding()]
 param(
   [int]$Pr = 0,
-  [switch]$DryRun
+  [switch]$DryRun,
+  # A station that can hang forever is worse than one that fails, because a hang
+  # is indistinguishable from "still working". This script hung for two hours on
+  # its first real run, burning two seconds of processor time, and stopped only
+  # because a human asked what was taking so long.
+  [int]$TimeoutMinutes = 15
 )
 
-$ErrorActionPreference = 'Stop'
+# NOT 'Stop'. In Windows PowerShell 5.1, redirecting a native program's stderr
+# wraps each line in an error record and, under 'Stop', kills the script — even
+# when the program succeeded. `codex login status` prints its success message to
+# stderr, so the very first check killed this script on a healthy machine.
+# Native failures are caught by checking $LASTEXITCODE explicitly instead.
+$ErrorActionPreference = 'Continue'
 $RepoDir     = Split-Path -Parent $PSScriptRoot
-$WorkDir     = Join-Path $RepoDir '.review'   # git worktree, gitignored
+# One worktree per run, in temp, never a shared path. A fixed folder becomes a
+# shared mutable resource: when a run is killed, Windows can hold the directory
+# open long after every process of that run is gone, and then the *next* run
+# cannot start. A unique path per run means a stale lock strands one folder
+# instead of blocking the station indefinitely.
+$RunId       = "$PID-" + (Get-Random -Maximum 99999)
+$WorkRoot    = Join-Path $env:TEMP 'loop-review'
 $PromptFile  = Join-Path $PSScriptRoot 'review-prompt.md'
 $Marker      = 'reviewed-commit'
 
@@ -49,15 +65,21 @@ foreach ($cmd in 'gh', 'codex', 'git', 'npm') {
 }
 if (-not (Test-Path $PromptFile)) { Fail "Missing $PromptFile." }
 
-$codexAuth = & codex login status 2>&1 | Out-String
+# `codex login status` reports success on the ERROR stream, which is common for
+# status text. Reading only standard output returns nothing, and the check then
+# concludes "not signed in" on a perfectly healthy machine. Merging the two
+# streams inside cmd sidesteps PowerShell 5.1 wrapping native error output in
+# error records, which is its own separate trap.
+$codexAuth = (cmd /c "codex login status 2>&1" | Out-String)
 if ($codexAuth -notmatch 'Logged in') {
-  Fail "Codex is not signed in. Run 'codex login' in a terminal. Reviews cannot run until then."
+  Fail "Codex is not signed in (reported: '$($codexAuth.Trim())'). Run 'codex login' in a terminal. Reviews cannot run until then."
 }
+Say "Codex sign-in OK."
 
 Push-Location $RepoDir
 try {
   # --- Which pull requests need a review?
-  $prsJson = & gh pr list --state open --limit 50 --json number,headRefName,headRefOid,isDraft | Out-String
+  $prsJson = & gh pr list --state open --limit 50 --json number,headRefName,headRefOid,isDraft,headRepositoryOwner,isCrossRepository | Out-String
   $prs = $prsJson | ConvertFrom-Json
 
   if ($Pr -gt 0) {
@@ -68,6 +90,16 @@ try {
   $todo = @()
   foreach ($p in $prs) {
     if ($p.isDraft -and $Pr -eq 0) { continue }   # a draft is deliberately not ready
+
+    # --- THE SAFEGUARD. Reviewing runs the branch's tests, and the sandbox is
+    # --- off, so this machine executes whatever is on that branch. Code from
+    # --- this repository is code you control. Code from a fork is a stranger's.
+    # --- Never the second one, no matter who asked. This check is deliberately
+    # --- not overridable by the -Pr switch.
+    if ($p.isCrossRepository) {
+      Say "SKIPPING PR #$($p.number): it comes from a fork ($($p.headRepositoryOwner.login)). Running a stranger's tests on this machine with the sandbox off is not something this script will do. Review it in a cloud runner instead."
+      continue
+    }
 
     if ($Pr -eq 0) {
       $commentsJson = & gh pr view $p.number --json comments | Out-String
@@ -86,8 +118,8 @@ try {
 
     # --- Isolated worktree. The reviewer never touches your working copy, and a run
     # --- that dies half way leaves a folder to delete rather than a mess to untangle.
-    if (Test-Path $WorkDir) { & git worktree remove --force $WorkDir 2>$null | Out-Null }
-    & git fetch -q origin "pull/$($p.number)/head" 2>$null
+    $WorkDir = Join-Path $WorkRoot "pr$($p.number)-$RunId"
+    & git fetch -q origin "pull/$($p.number)/head" | Out-Null
     & git worktree add -q --detach $WorkDir $p.headRefOid
     if ($LASTEXITCODE -ne 0) { Fail "Could not create a worktree for PR #$($p.number)." }
 
@@ -97,14 +129,47 @@ try {
       # whatever setup scripts the branch author wrote, and that is the code we have
       # not trusted yet.
       Say "  installing dependencies"
-      & npm ci --silent 2>&1 | Out-Null
+      & npm ci --silent | Out-Null
       if ($LASTEXITCODE -ne 0) { Say "  WARNING: npm ci failed; the reviewer should report TESTS_EXECUTED: no" }
 
       $prompt = (Get-Content $PromptFile -Raw) -replace '<PR>', $p.number
       $prompt += "`n`nThe pull request under review is #$($p.number). You are in a checkout of its head commit $($p.headRefOid). Compare against origin/main."
 
-      Say "  running codex"
-      & codex exec --skip-git-repo-check $prompt 2>&1 | Out-Null
+      # The sandbox is off because Codex cannot start the test runner with it on:
+      # neither the default nor `workspace-write` permits spawning a child
+      # process here, so Vitest never starts and the reviewer can only ever
+      # answer "I could not verify".
+      #
+      # BE CLEAR ABOUT WHAT THAT COSTS. Reviewing runs the branch's test suite,
+      # and a branch can carry arbitrary code. A cloud runner is thrown away
+      # afterwards; this machine is not. The fork check above is what keeps that
+      # acceptable, and it is the safeguard rather than a formality. If it is
+      # ever removed, move the reviewer back to a cloud runner the same day.
+      #
+      # The instructions go in a file and the command line stays short. A long
+      # prompt passed as an argument is a quoting accident waiting to happen, and
+      # it makes the process impossible to read in a task list.
+      $instrFile = Join-Path $WorkDir 'review-instructions.md'
+      Set-Content -Path $instrFile -Value $prompt -Encoding utf8
+
+      Say "  running codex (sandbox off, $TimeoutMinutes min limit)"
+      # One string, with the prompt quoted inside it. Start-Process joins an
+      # argument ARRAY with spaces and adds no quoting of its own, so a prompt
+      # containing spaces arrives as several arguments and the second word gets
+      # read as a subcommand.
+      $codexArgs = 'exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox ' +
+                   '"Read review-instructions.md in the current directory and follow it exactly."'
+      $proc = Start-Process -FilePath 'codex' -WorkingDirectory $WorkDir -NoNewWindow -PassThru `
+        -ArgumentList $codexArgs
+
+      if (-not $proc.WaitForExit($TimeoutMinutes * 60 * 1000)) {
+        # Kill the whole tree. Killing the parent alone leaves node and npm
+        # children running, and those hold the worktree open so the next run
+        # cannot even clean up after this one.
+        Say "  TIMED OUT after $TimeoutMinutes minutes. Killing the reviewer and its children. No verdict for PR #$($p.number) — that is a failure, not a quiet skip."
+        & taskkill /T /F /PID $proc.Id | Out-Null
+        continue
+      }
 
       $reviewFile = Join-Path $WorkDir 'review.md'
       if (-not (Test-Path $reviewFile) -or (Get-Item $reviewFile).Length -eq 0) {
@@ -131,7 +196,12 @@ try {
     }
     finally {
       Pop-Location
-      & git worktree remove --force $WorkDir 2>$null | Out-Null
+      # Best effort. A stranded folder in temp costs nothing and Windows will
+      # release it eventually; a failure to tidy up must never stop the next
+      # review from running.
+      & git worktree remove --force $WorkDir | Out-Null
+      & git worktree prune | Out-Null
+      if (Test-Path $WorkDir) { Say "  note: could not delete $WorkDir yet (Windows still holds it). Harmless — it is in temp." }
     }
   }
 }
