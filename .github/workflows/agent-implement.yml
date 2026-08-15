@@ -55,7 +55,13 @@ jobs:
             Guessing is worse than stopping: a confident wrong change costs more
             to undo than a question costs to answer.
 
-              (a) There is no comment headed "## Agent Brief".
+              (a) There is no comment containing a brief — that is, no heading
+                  ending in "Agent Brief". The triage station writes "## Draft
+                  Agent Brief" and a human may leave it as it stands; both count.
+                  What authorises the work is the label a human applied, not the
+                  wording of a heading. If more than one brief comment exists,
+                  the newest wins, because a human editing a draft is the normal
+                  way a brief gets corrected.
               (b) The brief has no acceptance criteria, or they are too vague to
                   verify — you cannot tell, for a given input, whether you passed.
               (c) The criteria contradict each other, or contradict the code's
@@ -77,7 +83,9 @@ jobs:
 
             Otherwise, proceed.
 
-            The comment headed "## Agent Brief" is the contract. Implement exactly
+            The newest comment whose heading ends in "Agent Brief" is the
+            contract — whether it is headed "## Agent Brief" or "## Draft Agent
+            Brief". Implement exactly
             what it specifies — no more. Honour its "Out of scope" list literally:
             if you notice an unrelated problem, mention it in the pull request body
             and leave the code alone.
