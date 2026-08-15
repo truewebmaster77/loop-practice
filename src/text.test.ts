@@ -27,6 +27,35 @@ describe("slugify", () => {
   it("does not leave hyphens at either end", () => {
     expect(slugify("!!! Big News !!!")).toBe("big-news");
   });
+
+  it("converts accented Latin letters to their plain-ASCII equivalent", () => {
+    expect(slugify("Café Life in Paris")).toBe("cafe-life-in-paris");
+    expect(slugify("Naïve Travelers Guide")).toBe("naive-travelers-guide");
+  });
+
+  it("does not collapse a title of only accented letters to nothing", () => {
+    expect(slugify("Café")).toBe("cafe");
+  });
+
+  it("expands eszett to 'ss' instead of dropping it", () => {
+    expect(slugify("Straße Food Tour Berlin")).toContain("strasse");
+  });
+
+  it("transliterates Latin letters that NFD normalization does not decompose", () => {
+    expect(slugify("Smørrebrød")).toBe("smorrebrod");
+    expect(slugify("Łódź")).toBe("lodz");
+    expect(slugify("Œuvre")).toBe("oeuvre");
+    expect(slugify("Æsir")).toBe("aesir");
+    expect(slugify("Đakovo")).toBe("dakovo");
+  });
+
+  it("transliterates further non-decomposing Latin letters (stroke, dotless, ligature)", () => {
+    expect(slugify("Ħal Saflieni")).toBe("hal-saflieni");
+    expect(slugify("Diyarbakır")).toBe("diyarbakir");
+    expect(slugify("Ŧŧ")).toBe("tt");
+    expect(slugify("Ŋŋ")).toBe("nn");
+    expect(slugify("Ĳsselmeer")).toBe("ijsselmeer");
+  });
 });
 
 describe("truncate", () => {
