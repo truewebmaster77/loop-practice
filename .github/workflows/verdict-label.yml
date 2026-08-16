@@ -75,9 +75,24 @@ jobs:
 
           echo "verdict='$VERDICT'  risk='$RISK'  tests_executed='$RAN'  latest CI not green = $CI_BAD"
 
+          # Exactly one state label at a time. Adding a label without clearing the
+          # others let a pull request show "needs human review" and "ready to
+          # merge" at once — contradictory signals are worse than none, because
+          # the reader believes whichever one they saw first.
+          set_state() {
+            KEEP="$1"
+            for L in ready-for-human-merge needs-human-review changes-requested; do
+              if [ "$L" = "$KEEP" ]; then
+                gh pr edit "$PR" --add-label "$L" || true
+              else
+                gh pr edit "$PR" --remove-label "$L" 2>/dev/null || true
+              fi
+            done
+          }
+
           if [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$RAN" != "TESTS_EXECUTED: yes" ]; then
             gh pr comment "$PR" --body "Approval not accepted: the reviewer did not confirm it ran the test suite (\`$RAN\`). An approval that could not be checked is not a merge signal." || true
-            gh pr edit "$PR" --add-label "changes-requested" --remove-label "ready-for-human-merge" || true
+            set_state changes-requested
             echo "Rejected an unverified approval."
           elif [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$CI_BAD" -eq 0 ] && [ "$RISK" = "RISK: RED" ]; then
             # An approval on a red-lane change is still only an opinion. Security,
@@ -86,14 +101,14 @@ jobs:
             # merge-ready label is withheld and a human is required to read the
             # diff themselves. `ready-for-human-merge` is a label that invites you
             # not to look; that is fine for a typo and not fine for auth.
-            gh pr edit "$PR" --add-label "needs-human-review" --remove-label "changes-requested" || true
+            set_state needs-human-review
             gh pr comment "$PR" --body "Reviewed and approved, but classified **RISK: RED** — architecture, a public interface, a migration, security, money or personal data. Approval is not enough on this lane. Someone has to read the diff before it merges." || true
             echo "Red lane: approved but withheld from the merge-ready label."
           elif [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$CI_BAD" -eq 0 ]; then
-            gh pr edit "$PR" --add-label "ready-for-human-merge" --remove-label "changes-requested" || true
+            set_state ready-for-human-merge
             echo "Labelled ready-for-human-merge. Nothing here can merge it; that is a human's job."
           elif [ "$VERDICT" = "VERDICT: CHANGES_REQUESTED" ]; then
-            gh pr edit "$PR" --add-label "changes-requested" --remove-label "ready-for-human-merge" || true
+            set_state changes-requested
             echo "Labelled changes-requested."
           else
             echo "No usable verdict, or CI is not green. Leaving labels alone."
