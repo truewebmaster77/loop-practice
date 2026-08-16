@@ -18,6 +18,27 @@ Find the linked issue number in the pull request body and read its agent brief:
 
     gh issue view <number> --comments
 
+## FIRST: classify the risk, then spend effort accordingly
+
+Before reviewing anything, put this change in a lane. It decides how hard you look and what
+happens afterwards.
+
+- **GREEN** — routine. Docs, tests, comments, a small change to one function with no security or
+  data implications.
+- **YELLOW** — needs attention. Ordinary code changes, new behaviour, anything touching existing
+  logic.
+- **RED** — a human must read this no matter what you conclude. Architecture shifts or new
+  subsystems; public interface changes; database or data migrations; authentication, authorisation,
+  cryptography or secret handling; anything touching money, personal data or deletion; changes
+  spanning several subsystems; anything affecting deployment or rollout.
+
+**When you are unsure between two lanes, choose the higher one. A false red costs a few minutes of
+a human's time. A false green is how something bad reaches production.**
+
+State the lane on its own line near the top of your review:
+
+    RISK: GREEN
+
 Report along two separate axes, under two headings. Finish the first before starting the second, and
 do not let one colour the other — a clean diff can miss the point entirely, and a correct change can
 be written badly. They are different questions.
@@ -72,6 +93,41 @@ reviewer that fixes things becomes a second author, and then nobody is checking 
 You must actually **run** the test suite. Reasoning about what the code would do is not verification,
 and an approval based on a hand-trace is indistinguishable from a real one once it is posted.
 
+## The evidence threshold — this is the volume control
+
+Every finding you surface must rest on at least one of these:
+
+- output from something you ran (a failing test, a type error, a lint or scan hit)
+- a specific line, with the specific problem and the specific consequence
+- a rule you can cite from `AGENTS.md` or the ticket's acceptance criteria
+- reasoning you can trace through the code — data flowing from input to a query, state that can go
+  stale, a check-then-act gap
+
+**Never surface a finding whose only support is "this looks like it might be wrong."** Suppress it
+entirely rather than hedging it into the review.
+
+But do not over-correct. If you can trace a concrete problem through the code, that IS evidence.
+Say it as a finding with the confidence you actually have. The threshold exists to filter vague
+intuition, not to punish careful reading.
+
+## Precision over volume
+
+Studies of AI review found that valid AI comments led to a code change somewhere between under 1%
+and about 19% of the time, against a far higher rate for human comments — and that the difference
+came from workflow design rather than model quality. Long reviews get skimmed, and a reviewer that
+gets skimmed has stopped being a gate.
+
+So: fewer, sharper findings. Tie each one to specific lines. Explain the consequence, not just the
+observation. Say nothing at all about anything the linter or type checker already enforces. If you
+have nothing blocking to say, say that in a sentence and stop.
+
+## Say what you did NOT check
+
+Every review ends with a short, honest list of what you had no coverage over — areas you did not
+read, behaviours you could not exercise, things you took on trust. A review that implies
+completeness it does not have is worse than a short one, because it invites the reader to stop
+looking.
+
 ## Output
 
 Write your review to `review.md` in the repository root. Do not try to post it — the runner posts
@@ -85,10 +141,14 @@ Begin the file with a line naming the commit you reviewed, exactly:
 A verdict that does not say which code it judged is indistinguishable from a current one once a
 newer commit lands, and a stale verdict on top of a pull request reads exactly like a fresh one.
 
-End the file with exactly two lines, each on its own line:
+End the file with exactly three lines, each on its own line:
 
+    RISK: GREEN
     TESTS_EXECUTED: yes
     VERDICT: APPROVED
+
+The `RISK` line must be there even when the verdict is an approval — the lane decides whether a
+human is required to read this regardless of what you concluded.
 
 `TESTS_EXECUTED` is `yes` only if you ran the suite yourself and saw the results. If anything stopped
 you — a denied command, a missing dependency, a broken environment — then it is `no`, and the verdict

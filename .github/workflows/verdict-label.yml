@@ -44,6 +44,11 @@ jobs:
           VERDICT=$(echo "$BODY" | grep -oE 'VERDICT: (APPROVED|CHANGES_REQUESTED)' | tail -1 || true)
           RAN=$(echo "$BODY" | grep -oE 'TESTS_EXECUTED: (yes|no)' | tail -1 || true)
 
+          # The risk lane. Missing counts as RED, not as GREEN — a reviewer that
+          # forgot to classify is not evidence that a change is safe.
+          RISK=$(echo "$BODY" | grep -oE 'RISK: (GREEN|YELLOW|RED)' | tail -1 || true)
+          if [ -z "$RISK" ]; then RISK="RISK: RED"; echo "No risk lane stated; treating as RED."; fi
+
           # A verdict is only about the code it actually read. When a repair
           # lands after a review, the old verdict stays at the top of the pull
           # request and looks current — a stale verdict is indistinguishable
@@ -68,12 +73,22 @@ jobs:
                else ( max_by(.completedAt) | if .conclusion == "SUCCESS" then 0 else 1 end )
                end)')
 
-          echo "verdict='$VERDICT'  tests_executed='$RAN'  latest CI not green = $CI_BAD"
+          echo "verdict='$VERDICT'  risk='$RISK'  tests_executed='$RAN'  latest CI not green = $CI_BAD"
 
           if [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$RAN" != "TESTS_EXECUTED: yes" ]; then
             gh pr comment "$PR" --body "Approval not accepted: the reviewer did not confirm it ran the test suite (\`$RAN\`). An approval that could not be checked is not a merge signal." || true
             gh pr edit "$PR" --add-label "changes-requested" --remove-label "ready-for-human-merge" || true
             echo "Rejected an unverified approval."
+          elif [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$CI_BAD" -eq 0 ] && [ "$RISK" = "RISK: RED" ]; then
+            # An approval on a red-lane change is still only an opinion. Security,
+            # migrations, public interfaces and money are where a confident review
+            # is least trustworthy and a mistake is least recoverable — so the
+            # merge-ready label is withheld and a human is required to read the
+            # diff themselves. `ready-for-human-merge` is a label that invites you
+            # not to look; that is fine for a typo and not fine for auth.
+            gh pr edit "$PR" --add-label "needs-human-review" --remove-label "changes-requested" || true
+            gh pr comment "$PR" --body "Reviewed and approved, but classified **RISK: RED** — architecture, a public interface, a migration, security, money or personal data. Approval is not enough on this lane. Someone has to read the diff before it merges." || true
+            echo "Red lane: approved but withheld from the merge-ready label."
           elif [ "$VERDICT" = "VERDICT: APPROVED" ] && [ "$CI_BAD" -eq 0 ]; then
             gh pr edit "$PR" --add-label "ready-for-human-merge" --remove-label "changes-requested" || true
             echo "Labelled ready-for-human-merge. Nothing here can merge it; that is a human's job."
