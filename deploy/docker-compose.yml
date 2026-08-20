@@ -1,0 +1,32 @@
+services:
+  loop-runner:
+    build: .
+    # One job, then the container exits and a fresh one replaces it.
+    restart: always
+    environment:
+      GITHUB_REPO: ${GITHUB_REPO}
+      RUNNER_TOKEN: ${RUNNER_TOKEN}
+      # Claude authenticates with a long-lived token, so it needs no volume.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+    volumes:
+      # Codex keeps a session file rather than a token, so it needs somewhere
+      # durable. This is the ONLY thing that survives a container, and it is the
+      # only credential on disk.
+      - codex-auth:/home/runner/.codex
+
+    # Limits, so a runaway test suite cannot take your desktop down with it.
+    # Leave headroom: this box is also something you remote into.
+    cpus: "2.5"
+    mem_limit: 5g
+    pids_limit: 512
+
+    # Deliberately absent, and each omission is a decision:
+    #   - no /var/run/docker.sock  (mounting it is root on the host)
+    #   - no host filesystem mounts
+    #   - no network_mode: host
+    #   - no ports published; the runner dials out, nothing dials in
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  codex-auth:
